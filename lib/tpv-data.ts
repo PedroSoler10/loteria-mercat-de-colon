@@ -1,4 +1,4 @@
-import { ticketId, tickets, type Ticket } from './inventory-data'
+import { ticketId, tickets, type Ticket } from './record-data'
 
 export const PRECIO_DECIMO = 20
 

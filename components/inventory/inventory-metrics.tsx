@@ -1,9 +1,9 @@
-import type { StockCounts } from '@/lib/inventory-data'
+import type { StockCounts } from '@/lib/record-data'
 import { cn } from '@/lib/utils'
 
 type Props = { counts: StockCounts }
 
-export function TpvMetrics({ counts }: Props) {
+export function InventoryMetrics({ counts }: Props) {
   const cards: { label: string; value: number; tone: 'neutral' | 'primary' | 'accent' }[] = [
     { label: 'Recibidos', value: counts.recibidos, tone: 'neutral' },
     { label: 'Disponibles', value: counts.disponibles, tone: 'primary' },

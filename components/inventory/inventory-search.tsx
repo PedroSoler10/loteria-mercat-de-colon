@@ -19,7 +19,7 @@ type Props = {
   resultCount: number
 }
 
-export function TpvSearch({
+export function InventorySearch({
   query,
   onQueryChange,
   mode,

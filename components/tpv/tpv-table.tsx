@@ -3,7 +3,7 @@
 import { Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { eur, formatFechaHora, type Sale } from '@/lib/sales-data'
+import { eur, formatFechaHora, type Sale } from '@/lib/tpv-data'
 
 type Props = {
   sales: Sale[]
@@ -11,7 +11,7 @@ type Props = {
   onVoid: (sale: Sale) => void
 }
 
-export function SalesTable({ sales, onEdit, onVoid }: Props) {
+export function TpvTable({ sales, onEdit, onVoid }: Props) {
   return (
     <section aria-labelledby="historial-title" className="rounded-lg border bg-card shadow-sm">
       <div className="flex items-center justify-between border-b px-5 py-3">

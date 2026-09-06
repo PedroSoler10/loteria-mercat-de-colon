@@ -12,13 +12,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import type { Albaran } from '@/lib/inventory-data'
+import type { Albaran } from '@/lib/record-data'
 
 type Props = {
   albaranes: Albaran[]
 }
 
-export function ImportAlbaranes({ albaranes }: Props) {
+export function ImportDeliveryNotes({ albaranes }: Props) {
   const [dragging, setDragging] = useState(false)
   const [pending, setPending] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)

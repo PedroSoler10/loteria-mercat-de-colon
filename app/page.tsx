@@ -2,15 +2,15 @@
 
 import { useState } from 'react'
 import { AppHeader, type Tab } from '@/components/app-header'
+import { RecordTab } from '@/components/record/record-tab'
 import { InventoryTab } from '@/components/inventory/inventory-tab'
 import { TpvTab } from '@/components/tpv/tpv-tab'
-import { SalesTab } from '@/components/sales/sales-tab'
-import { PlaceholderTab } from '@/components/placeholder-tab'
-import { tickets as initialTickets, ticketId, type Ticket } from '@/lib/inventory-data'
-import { initialSales, saleFromTicket, type Sale } from '@/lib/sales-data'
+import { GraphicsTab } from '@/components/graphics-tab'
+import { tickets as initialTickets, ticketId, type Ticket } from '@/lib/record-data'
+import { initialSales, saleFromTicket, type Sale } from '@/lib/tpv-data'
 
 export default function Page() {
-  const [tab, setTab] = useState<Tab>('TPV')
+  const [tab, setTab] = useState<Tab>('Inventario')
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets)
   const [sales, setSales] = useState<Sale[]>(initialSales)
 
@@ -22,8 +22,24 @@ export default function Page() {
     setSales((current) => [...newSales, ...current])
   }
 
-  function editSale(id: string, patch: Pick<Sale, 'fecha' | 'precio'>) {
+  function editSale(id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) {
+    const currentSale = sales.find((sale) => sale.id === id)
+    if (!currentSale) return false
+    const previousTicketId = ticketId(currentSale)
+    const nextTicketId = `${patch.numero}/${patch.serie}/${patch.fraccion}`
+    const targetTicket = tickets.find((ticket) => ticketId(ticket) === nextTicketId)
+    if (!targetTicket || (targetTicket.vendido && nextTicketId !== previousTicketId)) return false
+
     setSales((current) => current.map((sale) => (sale.id === id ? { ...sale, ...patch } : sale)))
+    setTickets((current) =>
+      current.map((ticket) => {
+        const currentTicketId = ticketId(ticket)
+        if (currentTicketId === previousTicketId) return { ...ticket, vendido: false }
+        if (currentTicketId === nextTicketId) return { ...ticket, vendido: true }
+        return ticket
+      }),
+    )
+    return true
   }
 
   function voidSale(sale: Sale) {
@@ -40,17 +56,19 @@ export default function Page() {
     <div className="flex min-h-screen flex-col">
       <AppHeader active={tab} onChange={setTab} />
       <main id={`panel-${tab}`} role="tabpanel" className="flex-1 px-6 py-6">
-        {tab === 'Inventario' && <InventoryTab tickets={tickets} />}
-        {tab === 'TPV' && <TpvTab tickets={tickets} onTicketsChange={setTickets} onSale={registerSale} />}
-        {tab === 'Registro de Ventas' && (
-          <SalesTab sales={sales} onEdit={editSale} onVoid={voidSale} />
-        )}
-        {tab === 'Gráficas' && (
-          <PlaceholderTab
-            title="Gráficas"
-            description="Evolución del inventario y de las ventas por sorteo, número y periodo."
+        {tab === 'Registro' && <RecordTab />}
+        {tab === 'Inventario' && <InventoryTab tickets={tickets} onTicketsChange={setTickets} onSale={registerSale} />}
+        {tab === 'TPV' && (
+          <TpvTab
+            tickets={tickets}
+            sales={sales}
+            onTicketsChange={setTickets}
+            onSale={registerSale}
+            onEdit={editSale}
+            onVoid={voidSale}
           />
         )}
+        {tab === 'Gráficas' && <GraphicsTab tickets={tickets} sales={sales} />}
       </main>
     </div>
   )

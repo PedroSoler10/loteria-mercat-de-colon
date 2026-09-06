@@ -13,7 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { countStock, groupTickets, ticketId, type NumeroNode, type Ticket } from '@/lib/inventory-data'
+import { countStock, groupTickets, ticketId, type NumeroNode, type Ticket } from '@/lib/record-data'
 import { SellControl } from './sell-control'
 
 type Props = {
@@ -61,7 +61,7 @@ function Counts({ list, strong }: { list: Ticket[]; strong?: boolean }) {
 
 const COLS = 7
 
-export function TpvStockTable({ tickets, autoExpand, onSell }: Props) {
+export function InventoryStockTable({ tickets, autoExpand, onSell }: Props) {
   const numeros = useMemo(() => groupTickets(tickets), [tickets])
   const [openNumeros, setOpenNumeros] = useState<Set<string>>(new Set())
   const [openSeries, setOpenSeries] = useState<Set<string>>(new Set())

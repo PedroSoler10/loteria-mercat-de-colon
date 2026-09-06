@@ -2,7 +2,7 @@
 
 import { Banknote, Ticket } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { eur, startOfPeriod, type Periodo } from '@/lib/sales-data'
+import { eur, startOfPeriod, type Periodo } from '@/lib/tpv-data'
 
 type Props = {
   periodo: Periodo
@@ -18,7 +18,7 @@ const PERIODOS: { value: Periodo; label: string }[] = [
   { value: 'mes', label: 'Este mes' },
 ]
 
-export function ArqueoPanel({ periodo, onPeriodoChange, ingresos, decimos, operaciones }: Props) {
+export function CashReconciliationPanel({ periodo, onPeriodoChange, ingresos, decimos, operaciones }: Props) {
   const desde = startOfPeriod(periodo)
   const rango =
     periodo === 'hoy'

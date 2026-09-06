@@ -5,7 +5,7 @@ import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { albaranes, groupTickets, type Ticket } from '@/lib/inventory-data'
+import { albaranes, groupTickets, type Ticket } from '@/lib/record-data'
 
 type Props = {
   tickets: Ticket[]
@@ -26,7 +26,7 @@ function getAlbaranName(id: string) {
 
 const COLS = 5
 
-export function InventoryTreeTable({ tickets }: Props) {
+export function RecordTreeTable({ tickets }: Props) {
   const numeros = useMemo(() => groupTickets(tickets), [tickets])
   const [openNumeros, setOpenNumeros] = useState<Set<string>>(new Set())
   const [openSeries, setOpenSeries] = useState<Set<string>>(new Set())
