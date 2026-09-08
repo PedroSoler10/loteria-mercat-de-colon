@@ -1,12 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { EditSaleDialog } from './edit-sale-dialog'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
 import { TpvTable } from './tpv-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
-import { filterByPeriodo, type Periodo, type Sale } from '@/lib/tpv-data'
+import type { Sale } from '@/lib/tpv-data'
 
 type Props = {
   tickets: Ticket[]
@@ -20,11 +20,9 @@ type Props = {
 }
 
 export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete }: Props) {
-  const [periodo, setPeriodo] = useState<Periodo>('hoy')
   const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null)
   const [saleMode, setSaleMode] = useState<SaleMode>('fraccion')
 
-  const periodSales = useMemo(() => filterByPeriodo(sales, periodo), [sales, periodo])
   function findAvailableTickets(code: string, mode: SaleMode) {
     const normalized = code.trim().replace(/[ -]/g, '/')
     const parts = normalized.split('/').filter(Boolean)
@@ -78,7 +76,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
   return (
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
-      <TpvTable sales={periodSales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
+      <TpvTable sales={sales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
       <EditSaleDialog sale={saleToEdit} onClose={() => setSaleToEdit(null)} onSave={onEdit} />
     </div>
   )

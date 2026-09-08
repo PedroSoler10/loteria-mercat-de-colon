@@ -2,6 +2,7 @@
 
 import { ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Fragment } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -105,7 +106,7 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
           {groups.map(([key, group]) => {
             const isExpanded = expanded.has(key)
             return (
-              <>
+              <Fragment key={`group-fragment-${key}`}>
                 <TableRow key={`group-${key}`} className="cursor-pointer bg-muted/30 hover:bg-muted/50" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })}>
                   <TableCell colSpan={4} className="font-semibold capitalize"><div className="flex items-center gap-2"><ChevronRight className={`size-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />{groupLabel(key, grouping)}</div></TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{group.length} ventas</TableCell><TableCell />
@@ -179,7 +180,7 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
               </TableRow>
             )
           })}
-              </>
+              </Fragment>
             )
           })}
         </TableBody>
