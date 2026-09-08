@@ -13,17 +13,20 @@ export default function Page() {
   const [tab, setTab] = useState<Tab>('Inventario')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [sales, setSales] = useState<Sale[]>([])
+  const [cedidos, setCedidos] = useState<Sale[]>([])
   const [albaranes, setAlbaranes] = useState<Albaran[]>([])
 
   async function refreshData() {
-    const [inventoryResponse, salesResponse, originsResponse] = await Promise.all([
+    const [inventoryResponse, salesResponse, cedidosResponse, originsResponse] = await Promise.all([
       fetch('/api/inventory', { cache: 'no-store' }),
       fetch('/api/sales', { cache: 'no-store' }),
+      fetch('/api/cedidos', { cache: 'no-store' }),
       fetch('/api/origins', { cache: 'no-store' }),
     ])
     const failedResponse = [
       ['/api/inventory', inventoryResponse] as const,
       ['/api/sales', salesResponse] as const,
+      ['/api/cedidos', cedidosResponse] as const,
       ['/api/origins', originsResponse] as const,
     ].find(([, response]) => !response.ok)
     if (failedResponse) {
@@ -39,7 +42,9 @@ export default function Page() {
     }
     setTickets(await inventoryResponse.json())
     setSales(await salesResponse.json())
+    const cedidos = await cedidosResponse.json()
     setAlbaranes(await originsResponse.json())
+    setCedidos(cedidos)
   }
 
   useEffect(() => {
@@ -136,6 +141,7 @@ export default function Page() {
             onVoid={voidSale}
             onRestore={restoreSale}
             onDelete={permanentlyDeleteSale}
+            cedidos={cedidos}
           />
         )}
         {tab === 'Análisis' && <AnalysisTab tickets={tickets} sales={sales} />}

@@ -24,7 +24,7 @@ export function InventoryTab({ tickets, onTicketsChange, onSale }: Props) {
 
   const filtered = useMemo(() => {
     let list = tickets
-    if (onlyAvailable) list = list.filter((t) => !t.vendido)
+    if (onlyAvailable) list = list.filter((t) => !t.vendido && !t.cedido)
     if (query) {
       let barcode: ReturnType<typeof parseSelaeBarcode> | null = null
       try {

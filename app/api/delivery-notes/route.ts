@@ -61,16 +61,44 @@ export async function POST(request: Request) {
   })
   if (existing) {
     if (existing.pdfChecksum === checksum) {
-      const updated = await prisma.origen.update({
-        where: { idOrigen: existing.idOrigen },
-        data: {
-          nombreAlbaran: parsed.name,
-          tipoOrigen: parsed.originType,
-          fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
-          totalNumeros: parsed.totalNumbers,
-          totalSeries: parsed.totalSeries,
-          totalBilletes: parsed.totalBilletes,
-        },
+      const updated = await prisma.$transaction(async (tx) => {
+        const origin = await tx.origen.update({
+          where: { idOrigen: existing.idOrigen },
+          data: {
+            nombreAlbaran: parsed.name,
+            tipoOrigen: parsed.originType,
+            fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
+            totalNumeros: parsed.totalNumbers,
+            totalSeries: parsed.totalSeries,
+            totalBilletes: parsed.totalBilletes,
+          },
+        })
+        if (parsed.originType === 'Cesión de Consignación') {
+          const sorteoId = `${parsed.tipoJuego}${parsed.year}${String(parsed.drawNumber).padStart(3, '0')}`
+          const requestedIds = parsed.entries.flatMap((entry) => {
+            const fractions = buildFractions(entry.fractions)
+            return Array.from({ length: entry.seriesTo - entry.seriesFrom + 1 }, (_, index) => entry.seriesFrom + index)
+              .flatMap((serie) => fractions.map((fraccion) => `${sorteoId}-${entry.number}-${String(serie).padStart(3, '0')}-${fraccion}`))
+          })
+          const boletos = []
+          for (let offset = 0; offset < requestedIds.length; offset += duplicateCheckBatchSize) {
+            const batch = requestedIds.slice(offset, offset + duplicateCheckBatchSize)
+            boletos.push(...await tx.boleto.findMany({ where: { idBoleto: { in: batch } }, select: { idBoleto: true } }))
+          }
+          const boletoIds = boletos.map((boleto) => boleto.idBoleto)
+          const oldSales = await tx.venta.findMany({
+            where: { idBoleto: { in: boletoIds } },
+            include: { boleto: { include: { origen: { select: { tipoOrigen: true } } } } },
+          })
+          const oldConsignmentSales = oldSales
+            .filter((sale) => sale.boleto.origen.tipoOrigen === 'Cesión de Consignación')
+            .map((sale) => sale.idBoleto)
+          if (oldConsignmentSales.length > 0) await tx.venta.deleteMany({ where: { idBoleto: { in: oldConsignmentSales } } })
+          const current = await tx.cedido.findMany({ where: { idBoleto: { in: boletoIds } }, select: { idBoleto: true } })
+          const currentIds = new Set(current.map((cedido) => cedido.idBoleto))
+          await tx.cedido.createMany({ data: boletos.filter((boleto) => !currentIds.has(boleto.idBoleto)).map((boleto) => ({ idBoleto: boleto.idBoleto })) })
+        }
+        return origin
       })
       return Response.json({
         idOrigen: updated.idOrigen,
@@ -175,9 +203,8 @@ export async function POST(request: Request) {
         throw new Error(`El boleto ya está cargado: ${first.numeroJugado} / serie ${first.serie} / fracción ${first.fraccion}`)
       }
 
-      const duplicateKeys = new Set(activeDuplicates.map((ticket) => `${ticket.idSorteo}/${ticket.numeroJugado}/${ticket.serie}/${ticket.fraccion}`))
       const ticketsToCreate = isConsignmentTransfer
-        ? data.filter((ticket) => !duplicateKeys.has(`${ticket.idSorteo}/${ticket.numeroJugado}/${ticket.serie}/${ticket.fraccion}`))
+        ? []
         : data
 
       await tx.origen.create({
@@ -197,19 +224,19 @@ export async function POST(request: Request) {
       })
       await tx.boleto.createMany({ data: ticketsToCreate })
       if (isConsignmentTransfer) {
-        const existingSales = []
-        for (let offset = 0; offset < data.length; offset += duplicateCheckBatchSize) {
-          const batch = data.slice(offset, offset + duplicateCheckBatchSize)
-          const batchSales = await tx.venta.findMany({
+        const existingCessions = []
+        for (let offset = 0; offset < activeDuplicates.length; offset += duplicateCheckBatchSize) {
+          const batch = activeDuplicates.slice(offset, offset + duplicateCheckBatchSize)
+          const batchCessions = await tx.cedido.findMany({
             where: { idBoleto: { in: batch.map((ticket) => ticket.idBoleto) } },
             select: { idBoleto: true },
           })
-          existingSales.push(...batchSales)
+          existingCessions.push(...batchCessions)
         }
-        const existingSaleIds = new Set(existingSales.map((sale) => sale.idBoleto))
-        await tx.venta.createMany({
-          data: data
-            .filter((ticket) => !existingSaleIds.has(ticket.idBoleto))
+        const existingCessionIds = new Set(existingCessions.map((cession) => cession.idBoleto))
+        await tx.cedido.createMany({
+          data: activeDuplicates
+            .filter((ticket) => !existingCessionIds.has(ticket.idBoleto))
             .map((ticket) => ({ idBoleto: ticket.idBoleto })),
         })
       }

@@ -66,6 +66,7 @@ export async function DELETE(request: Request, context: Context) {
         throw error
       }
       if (deleteSales) await tx.venta.deleteMany({ where: { boleto: { is: { idOrigen: id } } } })
+      await tx.cedido.deleteMany({ where: { boleto: { is: { idOrigen: id } } } })
 
       await tx.origen.update({ where: { idOrigen: id }, data: { deletedAt: new Date() } })
     })

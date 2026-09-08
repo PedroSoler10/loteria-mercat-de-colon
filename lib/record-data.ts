@@ -31,6 +31,7 @@ export type Ticket = {
   anio: number
   registrado: string
   vendido: boolean
+  cedido: boolean
 }
 
 export function ticketId(t: Pick<Ticket, 'numero' | 'serie' | 'fraccion'>) {
@@ -78,6 +79,7 @@ function buildTickets(
         anio: ANIO,
         registrado: fecha,
         vendido: false,
+        cedido: false,
       })
     }
   }
@@ -116,11 +118,12 @@ export const tickets: Ticket[] = seedSales([
   ...buildTickets('88890', ['060', '061'], 'ALB-2026-00425', '2026-09-01 17:05'),
 ])
 
-export type StockCounts = { recibidos: number; vendidos: number; disponibles: number }
+export type StockCounts = { recibidos: number; cedidos: number; vendidos: number; disponibles: number }
 
 export function countStock(list: Ticket[]): StockCounts {
+  const cedidos = list.filter((t) => t.cedido).length
   const vendidos = list.filter((t) => t.vendido).length
-  return { recibidos: list.length, vendidos, disponibles: list.length - vendidos }
+  return { recibidos: list.length, cedidos, vendidos, disponibles: list.length - cedidos - vendidos }
 }
 
 export function groupTickets(list: Ticket[]): NumeroNode[] {

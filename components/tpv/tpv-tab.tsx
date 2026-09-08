@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { EditSaleDialog } from './edit-sale-dialog'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
 import { TpvTable } from './tpv-table'
+import { CedidoTable } from './cedido-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import { filterByPeriodo, type Periodo, type Sale } from '@/lib/tpv-data'
@@ -17,9 +18,10 @@ type Props = {
   onVoid: (sale: Sale) => void
   onRestore: (sale: Sale) => void
   onDelete: (sale: Sale) => void
+  cedidos: Sale[]
 }
 
-export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete }: Props) {
+export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete, cedidos }: Props) {
   const [periodo, setPeriodo] = useState<Periodo>('hoy')
   const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null)
   const [saleMode, setSaleMode] = useState<SaleMode>('fraccion')
@@ -28,7 +30,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
   function findAvailableTickets(code: string, mode: SaleMode) {
     const normalized = code.trim().replace(/[ -]/g, '/')
     const parts = normalized.split('/').filter(Boolean)
-    const available = tickets.filter((ticket) => !ticket.vendido)
+    const available = tickets.filter((ticket) => !ticket.vendido && !ticket.cedido)
     let barcode: ReturnType<typeof parseSelaeBarcode> | null = null
     try {
       barcode = parseSelaeBarcode(code)
@@ -79,6 +81,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
       <TpvTable sales={periodSales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
+      <CedidoTable cedidos={cedidos} />
       <EditSaleDialog sale={saleToEdit} onClose={() => setSaleToEdit(null)} onSave={onEdit} />
     </div>
   )
