@@ -36,8 +36,5 @@
     "prisma": "6.19.0",
     "tailwindcss": "^4.3.3",
     "typescript": "5.7.3"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.cjs"
   }
 }

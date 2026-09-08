@@ -4,6 +4,7 @@ const { spawnSync } = require('node:child_process')
 
 const root = process.cwd()
 const env = { ...process.env }
+if (!['development', 'production', 'test'].includes(env.NODE_ENV)) env.NODE_ENV = process.argv[2] === 'start' ? 'production' : 'development'
 if (!env.DATABASE_URL) {
   mkdirSync(path.join(root, 'data'), { recursive: true })
   env.DATABASE_URL = 'file:../data/loteria.db'
