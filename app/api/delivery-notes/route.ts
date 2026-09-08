@@ -13,6 +13,8 @@ function buildFractions(fractions?: string[]) {
     : Array.from({ length: 10 }, (_, index) => String(index + 1).padStart(2, '0'))
 }
 
+const duplicateCheckBatchSize = 500
+
 export async function POST(request: Request) {
   const formData = await request.formData()
   const file = formData.get('file')
@@ -144,10 +146,15 @@ export async function POST(request: Request) {
         return tickets
       })
 
-      const duplicates = await tx.boleto.findMany({
-        where: { OR: data.map((ticket) => ({ idSorteo: ticket.idSorteo, numeroJugado: ticket.numeroJugado, serie: ticket.serie, fraccion: ticket.fraccion })) },
-        include: { origen: { select: { deletedAt: true } } },
-      })
+      const duplicates = []
+      for (let offset = 0; offset < data.length; offset += duplicateCheckBatchSize) {
+        const batch = data.slice(offset, offset + duplicateCheckBatchSize)
+        const batchDuplicates = await tx.boleto.findMany({
+          where: { OR: batch.map((ticket) => ({ idSorteo: ticket.idSorteo, numeroJugado: ticket.numeroJugado, serie: ticket.serie, fraccion: ticket.fraccion })) },
+          include: { origen: { select: { deletedAt: true } } },
+        })
+        duplicates.push(...batchDuplicates)
+      }
       const staleOriginIds = Array.from(new Set(
         duplicates.filter((ticket) => ticket.origen.deletedAt).map((ticket) => ticket.idOrigen),
       ))

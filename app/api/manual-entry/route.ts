@@ -91,17 +91,22 @@ export async function POST(request: Request) {
         }
       }))
 
-      const duplicates = await tx.boleto.findMany({
-        where: {
-          OR: data.map((boleto) => ({
-            idSorteo: boleto.idSorteo,
-            numeroJugado: boleto.numeroJugado,
-            serie: boleto.serie,
-            fraccion: boleto.fraccion,
-          })),
-        },
-        include: { origen: true },
-      })
+      const duplicates = []
+      for (let offset = 0; offset < data.length; offset += 500) {
+        const batch = data.slice(offset, offset + 500)
+        const batchDuplicates = await tx.boleto.findMany({
+          where: {
+            OR: batch.map((boleto) => ({
+              idSorteo: boleto.idSorteo,
+              numeroJugado: boleto.numeroJugado,
+              serie: boleto.serie,
+              fraccion: boleto.fraccion,
+            })),
+          },
+          include: { origen: true },
+        })
+        duplicates.push(...batchDuplicates)
+      }
       const staleOriginIds = Array.from(new Set(
         duplicates.filter((boleto) => boleto.origen.deletedAt).map((boleto) => boleto.idOrigen),
       ))
