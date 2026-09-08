@@ -39,7 +39,7 @@ function parseSalesText(text) {
   }
 
   return lines.slice(1).map((line, index) => {
-    const match = line.match(/^(\d{20})\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})$/)
+    const match = line.match(/^(\d{20})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}:\d{2}:\d{2})$/)
     if (!match) throw new Error(`Línea ${index + 2} no válida: ${line}`)
     const [, codigo, fecha, hora] = match
     const [day, month, year] = fecha.split('/').map(Number)
@@ -57,6 +57,7 @@ async function importSales(filePath) {
     const sales = parseSalesText(fs.readFileSync(filePath, 'utf8'))
     return await prisma.$transaction(async (tx) => {
       const created = []
+      const skipped = []
       for (const sale of sales) {
         const sorteo = await tx.sorteo.findFirst({
           where: {
@@ -114,7 +115,10 @@ async function importSales(filePath) {
         if (target.cedidos.length > 0) throw new Error(`El boleto está cedido y no se puede vender: ${sale.codigo}`)
 
         const existing = await tx.venta.findUnique({ where: { idBoleto: target.idBoleto } })
-        if (existing?.estado === 'activa') throw new Error(`El boleto ya está vendido: ${sale.codigo}`)
+        if (existing?.estado === 'activa') {
+          skipped.push(sale.codigo)
+          continue
+        }
 
         const venta = existing
           ? await tx.venta.update({
@@ -126,7 +130,7 @@ async function importSales(filePath) {
             })
         created.push({ idBoleto: venta.idBoleto, codigo: sale.codigo, fechaHora: venta.fechaHoraVenta.toISOString() })
       }
-      return created
+      return { created, skipped }
     })
   } finally {
     await prisma.$disconnect()
@@ -140,8 +144,9 @@ if (require.main === module) {
     process.exit(1)
   }
   importSales(path.resolve(filePath))
-    .then((created) => {
+    .then(({ created, skipped }) => {
       console.log(`Ventas registradas: ${created.length}`)
+      console.log(`Ventas ya registradas omitidas: ${skipped.length}`)
       for (const sale of created) console.log(`${sale.codigo} ${sale.fechaHora}`)
     })
     .catch((error) => {
