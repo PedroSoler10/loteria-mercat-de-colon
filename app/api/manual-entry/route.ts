@@ -25,7 +25,7 @@ function pad(value: string, length: number) {
   return value.padStart(length, '0')
 }
 
-function manualOriginId(date: Date) {
+function originId(date: Date, prefix: 'MAN' | 'SCAN') {
   const parts = [
     date.getFullYear(),
     pad(String(date.getMonth() + 1), 2),
@@ -34,7 +34,7 @@ function manualOriginId(date: Date) {
     pad(String(date.getMinutes()), 2),
     pad(String(date.getSeconds()), 2),
   ]
-  return `MAN-${parts.join('-')}`
+  return `${prefix}_${parts.join('-')}`
 }
 
 export async function POST(request: Request) {
@@ -126,16 +126,22 @@ export async function POST(request: Request) {
       }
 
       let originDate = new Date()
-      let idOrigen = manualOriginId(originDate)
+      const originPrefix = rawScan ? 'SCAN' : 'MAN'
+      let idOrigen = originId(originDate, originPrefix)
       while (await tx.origen.findUnique({ where: { idOrigen } })) {
         originDate = new Date(originDate.getTime() + 1000)
-        idOrigen = manualOriginId(originDate)
+        idOrigen = originId(originDate, originPrefix)
       }
       const origen = await tx.origen.create({
         data: {
           idOrigen,
-          tipoOrigen: rawScan ? 'Lectura' : 'Manual',
+          idSorteo: sorteo.idSorteo,
+          tipoOrigen: rawScan ? 'Escaner' : 'Manual',
           nombreAlbaran: rawScan ? 'Alta mediante lectura' : 'Alta manual',
+          fechaEmision: originDate,
+          totalNumeros: 1,
+          totalSeries: series.length,
+          totalBilletes: data.length,
           pdfPath: null,
           pdfChecksum: null,
         },

@@ -6,6 +6,7 @@ export async function GET() {
   const origins = await prisma.origen.findMany({
     where: { deletedAt: null },
     include: {
+      sorteo: { select: { nombreSorteo: true } },
       _count: { select: { boletos: true } },
       boletos: { select: { numeroJugado: true, serie: true, fraccion: true } },
     },
@@ -34,9 +35,17 @@ export async function GET() {
 
     return {
       idOrigen: origin.idOrigen,
+      idReceptorAdmin: origin.idReceptorAdmin,
       nombre: origin.nombreAlbaran,
-      numerosDiferentes: numerosDiferentes.length,
-      totalBoletos: origin._count.boletos,
+      nombreSorteo: origin.sorteo?.nombreSorteo ?? 'Sorteo no identificado',
+      tipoOrigen: origin.tipoOrigen,
+      fechaCarga: origin.fechaHoraCarga.toISOString(),
+      fechaEmision: origin.fechaEmision?.toISOString() ?? null,
+      pdfPath: origin.pdfPath,
+      pdfChecksum: origin.pdfChecksum,
+      numerosDiferentes: origin.totalNumeros || numerosDiferentes.length,
+      totalSeries: origin.totalSeries || Array.from(byNumber.values()).reduce((total, series) => total + series.size, 0),
+      totalBoletos: origin.totalBilletes || origin._count.boletos,
       detalles,
     }
   }))

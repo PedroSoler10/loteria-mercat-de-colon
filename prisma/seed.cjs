@@ -5,9 +5,9 @@ const drawId = '52026102'
 const registeredAt = new Date('2026-08-28T09:14:00.000Z')
 
 const origins = [
-  { idOrigen: 'ALB-2026-00412', tipoOrigen: 'Albarán', nombreAlbaran: 'Navidad - Lote 1' },
-  { idOrigen: 'ALB-2026-00418', tipoOrigen: 'Albarán', nombreAlbaran: 'Navidad - Lote 2' },
-  { idOrigen: 'ALB-2026-00425', tipoOrigen: 'Albarán', nombreAlbaran: 'Reposición abonados' },
+  { idOrigen: 'ALB-2026-00412', idSorteo: drawId, tipoOrigen: 'Albarán', nombreAlbaran: 'Navidad - Lote 1', fechaEmision: registeredAt, totalNumeros: 4, totalSeries: 24, totalBilletes: 240 },
+  { idOrigen: 'ALB-2026-00418', idSorteo: drawId, tipoOrigen: 'Albarán', nombreAlbaran: 'Navidad - Lote 2', fechaEmision: registeredAt, totalNumeros: 2, totalSeries: 12, totalBilletes: 120 },
+  { idOrigen: 'ALB-2026-00425', idSorteo: drawId, tipoOrigen: 'Albarán', nombreAlbaran: 'Reposición abonados', fechaEmision: registeredAt, totalNumeros: 1, totalSeries: 2, totalBilletes: 20 },
 ]
 
 const batches = [
@@ -54,7 +54,7 @@ async function main() {
       anoEmision: 6,
       anoCompleto: 2026,
       numeroSorteo: 102,
-      nombreSorteo: 'Sorteo Extraordinario de Navidad',
+      nombreSorteo: 'Sorteo Extraordinario de Navidad 2026',
       precioCentimos: 2000,
     },
   })
