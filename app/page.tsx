@@ -6,14 +6,14 @@ import { RecordTab } from '@/components/record/record-tab'
 import { InventoryTab } from '@/components/inventory/inventory-tab'
 import { TpvTab } from '@/components/tpv/tpv-tab'
 import { AnalysisTab } from '@/components/analysis-tab'
-import type { Albaran, Ticket } from '@/lib/record-data'
+import type { Albaran, Cedido, Ticket } from '@/lib/record-data'
 import type { Sale } from '@/lib/tpv-data'
 
 export default function Page() {
   const [tab, setTab] = useState<Tab>('Inventario')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [sales, setSales] = useState<Sale[]>([])
-  const [cedidos, setCedidos] = useState<Sale[]>([])
+  const [cedidos, setCedidos] = useState<Cedido[]>([])
   const [albaranes, setAlbaranes] = useState<Albaran[]>([])
 
   async function refreshData() {
@@ -128,6 +128,7 @@ export default function Page() {
             onUpdate={updateOrigin}
             onDelete={deleteOrigin}
             onImported={refreshData}
+            cedidos={cedidos}
           />
         )}
         {tab === 'Inventario' && <InventoryTab tickets={tickets} onTicketsChange={setTickets} onSale={registerSale} />}

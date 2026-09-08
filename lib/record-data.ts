@@ -13,6 +13,22 @@ export type Albaran = {
   detalles?: CargaDetalle[]
 }
 
+export type Cedido = {
+  id: string
+  idBoleto: string | null
+  idOrigen: string
+  nombreAlbaran: string
+  fecha: string
+  tipoJuego: string
+  sorteo: string
+  anio: number
+  numero: string
+  serie: string
+  fraccion: string
+  precio: number
+  estado: 'activa'
+}
+
 export type CargaDetalle = {
   numero: string
   series: {
@@ -32,6 +48,7 @@ export type Ticket = {
   registrado: string
   vendido: boolean
   cedido: boolean
+  recibido: boolean
 }
 
 export function ticketId(t: Pick<Ticket, 'numero' | 'serie' | 'fraccion'>) {
@@ -80,6 +97,7 @@ function buildTickets(
         registrado: fecha,
         vendido: false,
         cedido: false,
+        recibido: true,
       })
     }
   }
@@ -123,7 +141,8 @@ export type StockCounts = { recibidos: number; cedidos: number; vendidos: number
 export function countStock(list: Ticket[]): StockCounts {
   const cedidos = list.filter((t) => t.cedido).length
   const vendidos = list.filter((t) => t.vendido).length
-  return { recibidos: list.length, cedidos, vendidos, disponibles: list.length - cedidos - vendidos }
+  const recibidos = list.filter((t) => t.recibido).length
+  return { recibidos, cedidos, vendidos, disponibles: Math.max(0, recibidos - cedidos - vendidos) }
 }
 
 export function groupTickets(list: Ticket[]): NumeroNode[] {

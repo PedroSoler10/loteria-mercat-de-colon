@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import type { Albaran } from '@/lib/record-data'
+import type { Albaran, Cedido } from '@/lib/record-data'
+import { formatFechaHora, eur } from '@/lib/tpv-data'
 
 type ImportProps = { onImported: () => Promise<void> }
 type OriginPatch = Pick<Albaran, 'idOrigen' | 'nombre' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>
@@ -18,6 +19,37 @@ type TableProps = { albaranes: Albaran[]; onUpdate: (id: string, patch: OriginPa
 
 function Chevron({ open, className }: { open: boolean; className?: string }) {
   return <ChevronRight aria-hidden="true" className={cn('size-5 shrink-0 transition-transform duration-150', open && 'rotate-90', className)} />
+}
+
+export function CedidoRecordsTable({ cedidos }: { cedidos: Cedido[] }) {
+  return <section aria-labelledby="cedidos-registro-title" className="flex flex-col gap-4 rounded-lg border bg-card p-5 shadow-sm">
+    <div className="flex items-baseline gap-3">
+      <h2 id="cedidos-registro-title" className="text-lg font-semibold">Cedidos</h2>
+      <span className="text-sm text-muted-foreground">{cedidos.length} registros</span>
+    </div>
+    <div className="overflow-x-auto rounded-md border">
+      <Table className="min-w-[1100px] table-auto">
+        <TableHeader><TableRow className="bg-muted/60 hover:bg-muted/60">
+          <TableHead>Fecha y hora</TableHead><TableHead>Nombre del Sorteo</TableHead><TableHead>Albarán</TableHead>
+          <TableHead>Número</TableHead><TableHead>Serie</TableHead><TableHead>Fracción</TableHead>
+          <TableHead>Recibido</TableHead><TableHead className="text-right">Precio</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>
+          {cedidos.length === 0 && <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Sin cesiones registradas.</TableCell></TableRow>}
+          {cedidos.map((cedido) => {
+            const { fecha, hora } = formatFechaHora(cedido.fecha)
+            return <TableRow key={cedido.id}>
+              <TableCell className="font-mono tabular-nums">{fecha} <span className="text-muted-foreground">{hora}</span></TableCell>
+              <TableCell>{cedido.sorteo}</TableCell><TableCell className="font-mono">{cedido.idOrigen}</TableCell>
+              <TableCell className="font-mono font-semibold">{cedido.numero}</TableCell><TableCell className="font-mono">{cedido.serie}</TableCell>
+              <TableCell className="font-mono">{cedido.fraccion}</TableCell><TableCell>{cedido.idBoleto ? 'Sí' : 'No'}</TableCell>
+              <TableCell className="text-right font-mono">{eur.format(cedido.precio)}</TableCell>
+            </TableRow>
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  </section>
 }
 
 function ToggleLabel({ open, label, onClick, compact = false }: { open: boolean; label: string; onClick: () => void; compact?: boolean }) {
@@ -81,6 +113,7 @@ export function ImportedDeliveryNotesTable({ albaranes, onUpdate, onDelete }: Ta
       if (!byType.has(origin.tipoOrigen)) byType.set(origin.tipoOrigen, [])
       byType.get(origin.tipoOrigen)!.push(origin)
     }
+
     return Array.from(byDraw.entries()).map(([nombreSorteo, byType]) => ({
       nombreSorteo,
       tipos: Array.from(byType.entries()).map(([tipoOrigen, origenes]) => ({ tipoOrigen, origenes })),
@@ -95,6 +128,7 @@ export function ImportedDeliveryNotesTable({ albaranes, onUpdate, onDelete }: Ta
     setOpenNumbers(new Set(albaranes.flatMap((origin) => origin.detalles?.map((detail) => `${origin.idOrigen}/${detail.numero}`) ?? [])))
     setOpenSeries(new Set(albaranes.flatMap((origin) => origin.detalles?.flatMap((detail) => detail.series.map((serie) => `${origin.idOrigen}/${detail.numero}/${serie.serie}`)) ?? [])))
   }
+
   function collapseAll() { setOpenDraws(new Set()); setOpenTypes(new Set()); setOpenOrigins(new Set()); setOpenNumbers(new Set()); setOpenSeries(new Set()) }
   function startEditing(origin: Albaran) { setError(''); setEditing(origin); setDraft({ idOrigen: origin.idOrigen, nombre: origin.nombre, tipoOrigen: origin.tipoOrigen, fechaCarga: origin.fechaCarga, pdfPath: origin.pdfPath, pdfChecksum: origin.pdfChecksum }) }
   function updateDraft<K extends keyof OriginPatch>(key: K, value: OriginPatch[K]) { setDraft((current) => current ? { ...current, [key]: value } : current) }

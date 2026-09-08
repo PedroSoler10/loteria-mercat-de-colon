@@ -15,6 +15,26 @@ function buildFractions(fractions?: string[]) {
 
 const duplicateCheckBatchSize = 500
 
+function buildCessionRows(parsed: ReturnType<typeof parseDeliveryNoteItems>, sorteoId: string, originId: string) {
+  return parsed.entries.flatMap((entry) => {
+    const fractions = buildFractions(entry.fractions)
+    return Array.from({ length: entry.seriesTo - entry.seriesFrom + 1 }, (_, index) => entry.seriesFrom + index)
+      .flatMap((serie) => fractions.map((fraccion) => {
+        const paddedSerie = String(serie).padStart(3, '0')
+        const idBoleto = `${sorteoId}-${entry.number}-${paddedSerie}-${fraccion}`
+        return {
+          idCedido: `${originId}-${idBoleto}`,
+          idBoleto,
+          idSorteo: sorteoId,
+          idOrigen: originId,
+          numeroJugado: entry.number,
+          serie: paddedSerie,
+          fraccion,
+        }
+      }))
+  })
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData()
   const file = formData.get('file')
@@ -75,28 +95,16 @@ export async function POST(request: Request) {
         })
         if (parsed.originType === 'Cesión de Consignación') {
           const sorteoId = `${parsed.tipoJuego}${parsed.year}${String(parsed.drawNumber).padStart(3, '0')}`
-          const requestedIds = parsed.entries.flatMap((entry) => {
-            const fractions = buildFractions(entry.fractions)
-            return Array.from({ length: entry.seriesTo - entry.seriesFrom + 1 }, (_, index) => entry.seriesFrom + index)
-              .flatMap((serie) => fractions.map((fraccion) => `${sorteoId}-${entry.number}-${String(serie).padStart(3, '0')}-${fraccion}`))
-          })
+          const cessionRows = buildCessionRows(parsed, sorteoId, existing.idOrigen)
+          const requestedIds = cessionRows.map((row) => row.idBoleto)
           const boletos = []
           for (let offset = 0; offset < requestedIds.length; offset += duplicateCheckBatchSize) {
             const batch = requestedIds.slice(offset, offset + duplicateCheckBatchSize)
             boletos.push(...await tx.boleto.findMany({ where: { idBoleto: { in: batch } }, select: { idBoleto: true } }))
           }
-          const boletoIds = boletos.map((boleto) => boleto.idBoleto)
-          const oldSales = await tx.venta.findMany({
-            where: { idBoleto: { in: boletoIds } },
-            include: { boleto: { include: { origen: { select: { tipoOrigen: true } } } } },
-          })
-          const oldConsignmentSales = oldSales
-            .filter((sale) => sale.boleto.origen.tipoOrigen === 'Cesión de Consignación')
-            .map((sale) => sale.idBoleto)
-          if (oldConsignmentSales.length > 0) await tx.venta.deleteMany({ where: { idBoleto: { in: oldConsignmentSales } } })
-          const current = await tx.cedido.findMany({ where: { idBoleto: { in: boletoIds } }, select: { idBoleto: true } })
-          const currentIds = new Set(current.map((cedido) => cedido.idBoleto))
-          await tx.cedido.createMany({ data: boletos.filter((boleto) => !currentIds.has(boleto.idBoleto)).map((boleto) => ({ idBoleto: boleto.idBoleto })) })
+          const receivedIds = new Set(boletos.map((boleto) => boleto.idBoleto))
+          await tx.cedido.deleteMany({ where: { idOrigen: existing.idOrigen } })
+          await tx.cedido.createMany({ data: cessionRows.map((row) => ({ ...row, idBoleto: receivedIds.has(row.idBoleto) ? row.idBoleto : null })) })
         }
         return origin
       })
@@ -224,20 +232,10 @@ export async function POST(request: Request) {
       })
       await tx.boleto.createMany({ data: ticketsToCreate })
       if (isConsignmentTransfer) {
-        const existingCessions = []
-        for (let offset = 0; offset < activeDuplicates.length; offset += duplicateCheckBatchSize) {
-          const batch = activeDuplicates.slice(offset, offset + duplicateCheckBatchSize)
-          const batchCessions = await tx.cedido.findMany({
-            where: { idBoleto: { in: batch.map((ticket) => ticket.idBoleto) } },
-            select: { idBoleto: true },
-          })
-          existingCessions.push(...batchCessions)
-        }
-        const existingCessionIds = new Set(existingCessions.map((cession) => cession.idBoleto))
+        const receivedIds = new Set(activeDuplicates.map((ticket) => ticket.idBoleto))
+        const cessionRows = buildCessionRows(parsed, sorteo.idSorteo, parsed.sourceId)
         await tx.cedido.createMany({
-          data: activeDuplicates
-            .filter((ticket) => !existingCessionIds.has(ticket.idBoleto))
-            .map((ticket) => ({ idBoleto: ticket.idBoleto })),
+          data: cessionRows.map((row) => ({ ...row, idBoleto: receivedIds.has(row.idBoleto) ? row.idBoleto : null })),
         })
       }
       return {
