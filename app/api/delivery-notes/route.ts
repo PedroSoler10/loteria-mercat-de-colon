@@ -4,6 +4,7 @@ import path from 'node:path'
 import 'pdfjs-dist/legacy/build/pdf.worker.mjs'
 import { prisma } from '@/lib/prisma'
 import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-parser'
+import { isTemporaryOriginId } from '@/lib/origin-id'
 
 export const dynamic = 'force-dynamic'
 
@@ -205,15 +206,18 @@ export async function POST(request: Request) {
       }
 
       const activeDuplicates = duplicates.filter((ticket) => !purgedOriginIds.includes(ticket.idOrigen))
+      const provisionalDuplicates = activeDuplicates.filter((ticket) => isTemporaryOriginId(ticket.idOrigen))
+      const provisionalDuplicateIds = new Set(provisionalDuplicates.map((ticket) => ticket.idBoleto))
       const isConsignmentTransfer = parsed.originType === 'Cesión de Consignación'
-      if (activeDuplicates.length > 0 && !isConsignmentTransfer) {
-        const first = activeDuplicates[0]
+      const blockingDuplicates = activeDuplicates.filter((ticket) => !isTemporaryOriginId(ticket.idOrigen))
+      if (blockingDuplicates.length > 0 && !isConsignmentTransfer) {
+        const first = blockingDuplicates[0]
         throw new Error(`El boleto ya está cargado: ${first.numeroJugado} / serie ${first.serie} / fracción ${first.fraccion}`)
       }
 
       const ticketsToCreate = isConsignmentTransfer
         ? []
-        : data
+        : data.filter((ticket) => !provisionalDuplicateIds.has(ticket.idBoleto))
 
       await tx.origen.create({
         data: {
@@ -230,6 +234,17 @@ export async function POST(request: Request) {
           pdfChecksum: checksum,
         },
       })
+      if (provisionalDuplicates.length > 0) {
+        const provisionalOriginIds = Array.from(new Set(provisionalDuplicates.map((ticket) => ticket.idOrigen)))
+        await tx.boleto.updateMany({
+          where: { idBoleto: { in: Array.from(provisionalDuplicateIds) } },
+          data: { idOrigen: parsed.sourceId },
+        })
+        for (const provisionalOriginId of provisionalOriginIds) {
+          const remaining = await tx.boleto.count({ where: { idOrigen: provisionalOriginId } })
+          if (remaining === 0) await tx.origen.delete({ where: { idOrigen: provisionalOriginId } })
+        }
+      }
       await tx.boleto.createMany({ data: ticketsToCreate })
       if (isConsignmentTransfer) {
         const receivedIds = new Set(activeDuplicates.map((ticket) => ticket.idBoleto))
