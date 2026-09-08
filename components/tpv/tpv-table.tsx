@@ -1,6 +1,7 @@
 'use client'
 
-import { Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -14,10 +15,49 @@ type Props = {
   onDelete: (sale: Sale) => void
 }
 
+type Grouping = 'day' | 'week' | 'month'
+
+function groupKey(date: Date, grouping: Grouping) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  if (grouping === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  if (grouping === 'week') {
+    const day = (d.getDay() + 6) % 7
+    d.setDate(d.getDate() - day)
+  }
+  return d.toISOString().slice(0, 10)
+}
+
+function groupLabel(key: string, grouping: Grouping) {
+  const date = new Date(`${key}${grouping === 'month' ? '-01' : ''}T12:00:00`)
+  if (grouping === 'month') return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+  if (grouping === 'week') {
+    const end = new Date(date)
+    end.setDate(end.getDate() + 6)
+    return `Semana del ${date.toLocaleDateString('es-ES')} al ${end.toLocaleDateString('es-ES')}`
+  }
+  return date.toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+}
+
 export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) {
+  const [grouping, setGrouping] = useState<Grouping>('day')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const groups = useMemo(() => {
+    const map = new Map<string, Sale[]>()
+    for (const sale of sales) {
+      const key = groupKey(new Date(sale.fecha), grouping)
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(sale)
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => b.localeCompare(a))
+  }, [sales, grouping])
+  const allExpanded = groups.length > 0 && groups.every(([key]) => expanded.has(key))
+  function toggleAll() {
+    setExpanded(allExpanded ? new Set() : new Set(groups.map(([key]) => key)))
+  }
   return (
     <section aria-labelledby="historial-title" className="rounded-lg border bg-card shadow-sm">
-      <div className="flex items-center justify-between border-b px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
         <div className="flex flex-col">
           <h2 id="historial-title" className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Historial transaccional
@@ -25,6 +65,16 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
           <span className="text-sm text-foreground">
             {sales.length} venta{sales.length !== 1 && 's'} · orden cronológico descendente
           </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border bg-muted p-1">
+            {(['day', 'week', 'month'] as Grouping[]).map((value) => (
+              <Button key={value} type="button" variant="ghost" className={grouping === value ? 'bg-card text-primary shadow-sm' : ''} onClick={() => { setGrouping(value); setExpanded(new Set()) }}>
+                {value === 'day' ? 'Días' : value === 'week' ? 'Semanas' : 'Meses'}
+              </Button>
+            ))}
+          </div>
+          <Button type="button" variant="outline" onClick={toggleAll}>{allExpanded ? 'Contraer todo' : 'Expandir todo'}</Button>
         </div>
       </div>
 
@@ -50,7 +100,15 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
               </TableCell>
             </TableRow>
           )}
-          {sales.map((s) => {
+          {groups.map(([key, group]) => {
+            const isExpanded = expanded.has(key)
+            return (
+              <>
+                <TableRow key={`group-${key}`} className="cursor-pointer bg-muted/30 hover:bg-muted/50" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })}>
+                  <TableCell colSpan={4} className="font-semibold capitalize"><div className="flex items-center gap-2"><ChevronRight className={`size-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />{groupLabel(key, grouping)}</div></TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{group.length} ventas</TableCell><TableCell />
+                </TableRow>
+                {isExpanded && group.map((s) => {
             const { fecha, hora } = formatFechaHora(s.fecha)
             return (
               <TableRow key={s.id} className={s.estado === 'anulada' ? 'group opacity-70' : 'group'}>
@@ -117,6 +175,9 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
                   </div>
                 </TableCell>
               </TableRow>
+            )
+          })}
+              </>
             )
           })}
         </TableBody>

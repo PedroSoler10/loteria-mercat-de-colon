@@ -7,6 +7,7 @@ import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-pa
 import { isTemporaryOriginId } from '@/lib/origin-id'
 
 export const dynamic = 'force-dynamic'
+const DEFAULT_TICKET_PRICE_CENTIMOS = 2000
 
 function buildFractions(fractions?: string[]) {
   return fractions?.length
@@ -157,7 +158,7 @@ export async function POST(request: Request) {
             anoCompleto: parsed.year,
             numeroSorteo: parsed.drawNumber,
             nombreSorteo: parsed.drawName,
-            precioCentimos: 0,
+            precioCentimos: DEFAULT_TICKET_PRICE_CENTIMOS,
           },
         })
       } else if (sorteo.nombreSorteo !== parsed.drawName) {

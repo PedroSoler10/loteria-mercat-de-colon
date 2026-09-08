@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
+const DEFAULT_TICKET_PRICE_CENTIMOS = 2000
 
 type SaleRequest = {
   ticketIds?: string[]
@@ -22,7 +23,7 @@ function toSale(venta: { idBoleto: string; fechaHoraVenta: Date; estado: string;
     numero: venta.boleto.numeroJugado,
     serie: venta.boleto.serie,
     fraccion: venta.boleto.fraccion,
-    precio: venta.boleto.sorteo.precioCentimos / 100,
+    precio: (venta.boleto.sorteo.precioCentimos || DEFAULT_TICKET_PRICE_CENTIMOS) / 100,
     estado: venta.estado,
   }
 }
