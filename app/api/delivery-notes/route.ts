@@ -1,7 +1,6 @@
 import crypto from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import 'pdfjs-dist/legacy/build/pdf.worker.mjs'
 import { prisma } from '@/lib/prisma'
 import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-parser'
@@ -28,7 +27,7 @@ export async function POST(request: Request) {
   let parsed: ReturnType<typeof parseDeliveryNoteItems>
   try {
     const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const standardFontDataUrl = pathToFileURL(`${path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts')}${path.sep}`).href
+    const standardFontDataUrl = `${path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts').replaceAll('\\', '/')}/`
     const document = await getDocument({
       data: new Uint8Array(buffer),
       standardFontDataUrl,
