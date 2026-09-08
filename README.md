@@ -31,7 +31,7 @@ La base de datos principal es `loteria.db`. No borre esta carpeta al actualizar 
 Este procedimiento está destinado a quien prepara la aplicación, no al usuario final:
 
 ```powershell
-npm install
+corepack pnpm install
 npm run build
 npm run package:windows
 ```
@@ -42,6 +42,14 @@ El paquete se genera en `dist\LoteriaMercatDeColon`. Incluye:
 - El runtime de Node.js para Windows.
 - Prisma y las migraciones de la base de datos.
 - Un archivo `.cmd` para iniciar la aplicación con doble clic.
+
+El proyecto utiliza pnpm y conserva `pnpm-lock.yaml` como archivo de bloqueo oficial. No ejecute `npm install` en una carpeta donde ya exista `node_modules` creada por pnpm: npm 11 puede fallar al intentar deduplicar los enlaces internos de pnpm con el error `Cannot read properties of null (reading 'matches')`. Use siempre:
+
+```powershell
+corepack pnpm install
+```
+
+Si ya se ejecutó `npm install` y dejó la instalación en un estado inconsistente, cierre los procesos de desarrollo y elimine únicamente la carpeta `node_modules` del proyecto antes de volver a ejecutar `corepack pnpm install`. No elimine la carpeta `data`.
 
 ### Actualizar la aplicación
 
@@ -245,8 +253,8 @@ Las migraciones están en `prisma/migrations`. No deben modificarse ni eliminars
 Para desarrollo:
 
 ```powershell
-npm install
-npm run dev
+corepack pnpm install
+corepack pnpm dev
 ```
 
 El script de desarrollo prepara la base de datos y ejecuta las migraciones antes de iniciar Next.js.
@@ -254,15 +262,15 @@ El script de desarrollo prepara la base de datos y ejecuta las migraciones antes
 Para producción:
 
 ```powershell
-npm run build
-npm run start
+corepack pnpm build
+corepack pnpm start
 ```
 
 Para iniciar una instalación local y abrir el navegador automáticamente:
 
 ```powershell
-npm run build
-npm run local:start
+corepack pnpm build
+corepack pnpm local:start
 ```
 
 `next.config.mjs` utiliza `output: 'standalone'` para generar una compilación autocontenida. `scripts/start-local.cjs` aplica las migraciones, inicia el servidor standalone y abre `http://localhost:3000`.
@@ -296,7 +304,7 @@ Para una distribución comercial puede sustituirse el paquete portable por un in
 El comando de importación es:
 
 ```powershell
-npm run sales:import -- "C:\ruta\ventas.txt"
+corepack pnpm sales:import -- "C:\ruta\ventas.txt"
 ```
 
 El archivo debe comenzar por:
@@ -313,7 +321,7 @@ Comandos recomendados antes de publicar una versión:
 
 ```powershell
 corepack pnpm exec tsc --noEmit --incremental false
-npm run build
+corepack pnpm build
 ```
 
 El build de Next.js está configurado para no bloquearse por errores de TypeScript; por eso el type-check debe ejecutarse por separado.
