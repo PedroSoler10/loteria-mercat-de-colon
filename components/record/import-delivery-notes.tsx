@@ -22,33 +22,75 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
 }
 
 export function CedidoRecordsTable({ cedidos }: { cedidos: Cedido[] }) {
+  type OriginGroup = { idOrigen: string; nombreAlbaran: string; items: Cedido[] }
+  type TypeGroup = { tipoOrigen: string; origenes: OriginGroup[] }
+  type DrawGroup = { nombreSorteo: string; tipos: TypeGroup[] }
+  const [openDraws, setOpenDraws] = useState<Set<string>>(new Set())
+  const [openTypes, setOpenTypes] = useState<Set<string>>(new Set())
+  const [openOrigins, setOpenOrigins] = useState<Set<string>>(new Set())
+  const [openNumbers, setOpenNumbers] = useState<Set<string>>(new Set())
+  const [openSeries, setOpenSeries] = useState<Set<string>>(new Set())
+  const draws = useMemo<DrawGroup[]>(() => {
+    const byDraw = new Map<string, Map<string, Map<string, OriginGroup>>>()
+    for (const cedido of cedidos) {
+      if (!byDraw.has(cedido.sorteo)) byDraw.set(cedido.sorteo, new Map())
+      const byType = byDraw.get(cedido.sorteo)!
+      if (!byType.has('Cesión de Consignación')) byType.set('Cesión de Consignación', new Map())
+      const byOrigin = byType.get('Cesión de Consignación')!
+      if (!byOrigin.has(cedido.idOrigen)) byOrigin.set(cedido.idOrigen, { idOrigen: cedido.idOrigen, nombreAlbaran: cedido.nombreAlbaran, items: [] })
+      byOrigin.get(cedido.idOrigen)!.items.push(cedido)
+    }
+    return Array.from(byDraw.entries()).map(([nombreSorteo, byType]) => ({
+      nombreSorteo,
+      tipos: Array.from(byType.entries()).map(([tipoOrigen, origins]) => ({ tipoOrigen, origenes: Array.from(origins.values()) })),
+    }))
+  }, [cedidos])
+  function toggle(set: Set<string>, key: string, update: (value: Set<string>) => void) {
+    const next = new Set(set)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    update(next)
+  }
+  function groupedNumbers(items: Cedido[]) {
+    const numbers = new Map<string, Map<string, Cedido[]>>()
+    for (const item of items) {
+      if (!numbers.has(item.numero)) numbers.set(item.numero, new Map())
+      const series = numbers.get(item.numero)!
+      if (!series.has(item.serie)) series.set(item.serie, [])
+      series.get(item.serie)!.push(item)
+    }
+    return Array.from(numbers.entries()).map(([numero, series]) => ({ numero, series: Array.from(series.entries()) }))
+  }
+  function totals(origins: OriginGroup[]) {
+    const items = origins.flatMap((origin) => origin.items)
+    return { numeros: new Set(items.map((item) => item.numero)).size, series: new Set(items.map((item) => `${item.numero}/${item.serie}`)).size, fracciones: items.length }
+  }
+  function expandAll() {
+    setOpenDraws(new Set(draws.map((draw) => draw.nombreSorteo)))
+    setOpenTypes(new Set(draws.flatMap((draw) => draw.tipos.map((type) => `${draw.nombreSorteo}/${type.tipoOrigen}`))))
+    setOpenOrigins(new Set(draws.flatMap((draw) => draw.tipos.flatMap((type) => type.origenes.map((origin) => origin.idOrigen)))))
+  }
+  function collapseAll() { setOpenDraws(new Set()); setOpenTypes(new Set()); setOpenOrigins(new Set()); setOpenNumbers(new Set()); setOpenSeries(new Set()) }
   return <section aria-labelledby="cedidos-registro-title" className="flex flex-col gap-4 rounded-lg border bg-card p-5 shadow-sm">
-    <div className="flex items-baseline gap-3">
-      <h2 id="cedidos-registro-title" className="text-lg font-semibold">Cedidos</h2>
-      <span className="text-sm text-muted-foreground">{cedidos.length} registros</span>
-    </div>
-    <div className="overflow-x-auto rounded-md border">
-      <Table className="min-w-[1100px] table-auto">
-        <TableHeader><TableRow className="bg-muted/60 hover:bg-muted/60">
-          <TableHead>Fecha y hora</TableHead><TableHead>Nombre del Sorteo</TableHead><TableHead>Albarán</TableHead>
-          <TableHead>Número</TableHead><TableHead>Serie</TableHead><TableHead>Fracción</TableHead>
-          <TableHead>Recibido</TableHead><TableHead className="text-right">Precio</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
-          {cedidos.length === 0 && <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Sin cesiones registradas.</TableCell></TableRow>}
-          {cedidos.map((cedido) => {
-            const { fecha, hora } = formatFechaHora(cedido.fecha)
-            return <TableRow key={cedido.id}>
-              <TableCell className="font-mono tabular-nums">{fecha} <span className="text-muted-foreground">{hora}</span></TableCell>
-              <TableCell>{cedido.sorteo}</TableCell><TableCell className="font-mono">{cedido.idOrigen}</TableCell>
-              <TableCell className="font-mono font-semibold">{cedido.numero}</TableCell><TableCell className="font-mono">{cedido.serie}</TableCell>
-              <TableCell className="font-mono">{cedido.fraccion}</TableCell><TableCell>{cedido.idBoleto ? 'Sí' : 'No'}</TableCell>
-              <TableCell className="text-right font-mono">{eur.format(cedido.precio)}</TableCell>
-            </TableRow>
-          })}
-        </TableBody>
-      </Table>
-    </div>
+    <div className="flex items-center justify-between"><div className="flex items-baseline gap-3"><h2 id="cedidos-registro-title" className="text-lg font-semibold">Cedidos</h2><span className="text-sm text-muted-foreground">{cedidos.length} registros</span></div><div className="flex gap-2"><Button variant="outline" className="h-10" onClick={expandAll}>Desplegar todo</Button><Button variant="outline" className="h-10" onClick={collapseAll}>Contraer todo</Button></div></div>
+    <div className="overflow-x-auto rounded-md border"><Table className="min-w-[1400px] table-auto"><TableHeader><TableRow className="bg-muted/60 hover:bg-muted/60"><TableHead>Nombre del Sorteo</TableHead><TableHead>Tipo de Origen</TableHead><TableHead>ID</TableHead><TableHead>Fecha de cesión</TableHead><TableHead className="text-right">Total Números</TableHead><TableHead>Números</TableHead><TableHead className="text-right">Total Series</TableHead><TableHead>Series</TableHead><TableHead className="text-right">Total Fracciones</TableHead><TableHead>Fracciones</TableHead><TableHead>Recibido</TableHead></TableRow></TableHeader><TableBody>
+      {draws.length === 0 && <TableRow><TableCell colSpan={11} className="h-24 text-center text-muted-foreground">Sin cesiones registradas.</TableCell></TableRow>}
+      {draws.map((draw) => { const drawOpen = openDraws.has(draw.nombreSorteo); const origins = draw.tipos.flatMap((type) => type.origenes); const drawTotals = totals(origins); return <Fragment key={draw.nombreSorteo}>
+        <TableRow className={cn('cursor-pointer bg-card', drawOpen && 'bg-primary/5 hover:bg-primary/5')} onClick={() => toggle(openDraws, draw.nombreSorteo, setOpenDraws)}><TableCell className="p-1 font-semibold"><ToggleLabel open={drawOpen} label={draw.nombreSorteo} onClick={() => toggle(openDraws, draw.nombreSorteo, setOpenDraws)} /></TableCell><TableCell className="text-muted-foreground">{draw.tipos.length} tipos</TableCell><TableCell className="text-muted-foreground">{origins.length} importaciones</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{drawTotals.numeros}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{drawTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{drawTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
+        {drawOpen && draw.tipos.map((type) => { const typeKey = `${draw.nombreSorteo}/${type.tipoOrigen}`; const typeOpen = openTypes.has(typeKey); const typeTotals = totals(type.origenes); return <Fragment key={typeKey}>
+          <TableRow className={cn('cursor-pointer bg-muted/30', typeOpen && 'bg-muted/60 hover:bg-muted/60')} onClick={() => toggle(openTypes, typeKey, setOpenTypes)}><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 text-sm text-muted-foreground">{draw.nombreSorteo}</span></TableCell><TableCell className="p-1 font-medium"><ToggleLabel compact open={typeOpen} label={type.tipoOrigen} onClick={() => toggle(openTypes, typeKey, setOpenTypes)} /></TableCell><TableCell className="text-muted-foreground">{type.origenes.length} importaciones</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{typeTotals.numeros}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{typeTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{typeTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
+          {typeOpen && type.origenes.map((origin) => { const originOpen = openOrigins.has(origin.idOrigen); const groups = groupedNumbers(origin.items); const originTotals = totals([origin]); return <Fragment key={origin.idOrigen}>
+            <TableRow className={cn('cursor-pointer bg-card', originOpen && 'bg-primary/5 hover:bg-primary/5')} onClick={() => toggle(openOrigins, origin.idOrigen, setOpenOrigins)}><TableCell><span className="ml-6 block border-l-2 border-primary/20 pl-4 text-sm text-muted-foreground">{draw.nombreSorteo}</span></TableCell><TableCell className="text-muted-foreground">Cesión de Consignación</TableCell><TableCell className="p-1"><ToggleLabel compact open={originOpen} label={origin.idOrigen} onClick={() => toggle(openOrigins, origin.idOrigen, setOpenOrigins)} /></TableCell><TableCell className="font-mono text-sm tabular-nums">{origin.items[0] ? formatFechaHora(origin.items[0].fecha).fecha : '—'}</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.numeros}</TableCell><TableCell className="text-muted-foreground">{origin.nombreAlbaran}</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
+            {originOpen && groups.map((group) => { const numberKey = `${origin.idOrigen}/${group.numero}`; const numberOpen = openNumbers.has(numberKey); const count = group.series.reduce((sum, [, items]) => sum + items.length, 0); return <Fragment key={numberKey}>
+              <TableRow className={cn('cursor-pointer bg-muted/20', numberOpen && 'bg-muted/40 hover:bg-muted/40')} onClick={() => toggle(openNumbers, numberKey, setOpenNumbers)}><TableCell /><TableCell /><TableCell /><TableCell /><TableCell className="text-right font-mono tabular-nums">1</TableCell><TableCell className="p-1"><ToggleLabel compact open={numberOpen} label={group.numero} onClick={() => toggle(openNumbers, numberKey, setOpenNumbers)} /></TableCell><TableCell className="text-right font-mono tabular-nums">{group.series.length}</TableCell><TableCell>{group.series.length} series</TableCell><TableCell className="text-right font-mono tabular-nums">{count}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
+              {numberOpen && group.series.map(([serie, items]) => { const seriesKey = `${numberKey}/${serie}`; const seriesOpen = openSeries.has(seriesKey); return <Fragment key={seriesKey}>
+                <TableRow className={cn('cursor-pointer bg-muted/10', seriesOpen && 'bg-muted/30 hover:bg-muted/30')} onClick={() => toggle(openSeries, seriesKey, setOpenSeries)}><TableCell /><TableCell /><TableCell /><TableCell /><TableCell /><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{group.numero}</span></TableCell><TableCell className="text-right font-mono tabular-nums">1</TableCell><TableCell className="p-1"><ToggleLabel compact open={seriesOpen} label={serie} onClick={() => toggle(openSeries, seriesKey, setOpenSeries)} /></TableCell><TableCell className="text-right font-mono tabular-nums">{items.length}</TableCell><TableCell>{items.length} fracc.</TableCell><TableCell /></TableRow>
+                {seriesOpen && items.map((item) => <TableRow key={item.id} className="bg-card"><TableCell /><TableCell /><TableCell /><TableCell /><TableCell /><TableCell><span className="ml-6 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{item.numero}</span></TableCell><TableCell /><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{item.serie}</span></TableCell><TableCell className="text-right font-mono font-semibold">{item.fraccion}</TableCell><TableCell>—</TableCell><TableCell>{item.idBoleto ? 'Sí' : 'No'}</TableCell></TableRow>)}
+              </Fragment> })}
+            </Fragment> })}
+          </Fragment> })}
+        </Fragment> })}
+      </Fragment>})}
+    </TableBody></Table></div>
   </section>
 }
 
