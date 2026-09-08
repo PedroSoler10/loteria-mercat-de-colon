@@ -4,9 +4,7 @@ Aplicación web de escritorio para gestionar el inventario y las ventas de una a
 
 ## Estado actual
 
-La aplicación funciona con datos de demostración en memoria. No hay todavía una base de datos, una API backend, autenticación ni persistencia entre recargas.
-
-Los cambios realizados durante una sesión se mantienen mientras la aplicación permanece abierta. Al recargar, se recuperan los datos iniciales de demostración.
+La aplicación utiliza Next.js, una API backend y SQLite mediante Prisma. Los datos se conservan entre reinicios. Las migraciones se aplican automáticamente al arrancar con los scripts incluidos.
 
 ## Funcionalidades
 
@@ -41,8 +39,8 @@ La interfaz visible está en español. Los nombres técnicos de carpetas, archiv
 
 ## Requisitos
 
-- Node.js
-- Corepack habilitado
+- Node.js 22 o superior
+- Corepack habilitado para desarrollo
 
 ## Instalación
 
@@ -67,6 +65,26 @@ npm run dev
 ```
 
 Después abre [http://localhost:3000](http://localhost:3000) en el navegador.
+
+## Uso local recomendado
+
+Para una persona usuaria no técnica, la aplicación debe distribuirse como un paquete de producción de Windows que incluya Node.js y abra el navegador automáticamente. El proceso de construcción de ese paquete debe ejecutar primero `npm run build` y conservar fuera de los archivos actualizables la carpeta de datos del usuario.
+
+Durante el desarrollo o las pruebas locales, el flujo equivalente es:
+
+```powershell
+npm install
+npm run build
+npm run local:start
+```
+
+`local:start` ejecuta las migraciones, utiliza la carpeta `%LOCALAPPDATA%\LoteriaMercatDeColon\data` para `loteria.db` y abre `http://localhost:3000`. La variable `LOTERIA_DATA_DIR` permite elegir otra carpeta, por ejemplo para una copia de seguridad o una instalación compartida.
+
+La versión final para Windows no debe pedir al usuario que instale Node, pnpm o Corepack. Debe incluir el runtime de Node y ejecutar el mismo `scripts/start-local.cjs`; así la aplicación local y la futura versión publicada en un servidor mantienen el mismo servidor Next.js y el mismo mecanismo de migraciones.
+
+### Copias de seguridad y actualizaciones
+
+Antes de actualizar, cierre la aplicación y copie `loteria.db` desde `%LOCALAPPDATA%\LoteriaMercatDeColon\data`. Las actualizaciones deben sustituir los archivos de la aplicación, no la carpeta de datos. Al iniciar una versión nueva se ejecutan las migraciones pendientes automáticamente.
 
 ## Compilación y producción
 

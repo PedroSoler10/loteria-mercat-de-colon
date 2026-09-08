@@ -6,8 +6,9 @@ const root = process.cwd()
 const env = { ...process.env }
 if (!['development', 'production', 'test'].includes(env.NODE_ENV)) env.NODE_ENV = process.argv[2] === 'start' ? 'production' : 'development'
 if (!env.DATABASE_URL) {
-  mkdirSync(path.join(root, 'data'), { recursive: true })
-  env.DATABASE_URL = 'file:../data/loteria.db'
+  const dataDirectory = env.LOTERIA_DATA_DIR ?? path.join(root, 'data')
+  mkdirSync(dataDirectory, { recursive: true })
+  env.DATABASE_URL = `file:${path.join(dataDirectory, 'loteria.db')}`
 }
 
 const command = process.platform === 'win32' ? process.execPath : 'corepack'

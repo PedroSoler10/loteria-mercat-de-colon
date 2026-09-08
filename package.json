@@ -6,6 +6,8 @@
     "dev": "node scripts/run-with-database.cjs dev",
     "build": "next build",
     "start": "node scripts/run-with-database.cjs start",
+    "local:start": "node scripts/start-local.cjs",
+    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
