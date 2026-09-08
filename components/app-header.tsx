@@ -13,11 +13,11 @@ type AppHeaderProps = {
 export function AppHeader({ active, onChange }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b bg-primary text-primary-foreground shadow-sm">
-      <div className="flex h-14 items-center px-6">
+      <div className="flex h-14 items-center justify-center px-6 text-center">
         <h1 className="text-xl font-semibold tracking-tight">Lotería Mercat de Colón</h1>
       </div>
       <nav aria-label="Navegación principal" className="border-t border-primary-foreground/10 bg-card px-6">
-        <ul role="tablist" className="flex gap-2">
+        <ul role="tablist" className="flex w-full justify-center gap-2">
           {TABS.map((tab) => {
             const isActive = tab === active
             return (

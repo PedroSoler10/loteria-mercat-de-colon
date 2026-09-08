@@ -10,7 +10,7 @@ import type { Albaran, Cedido, Ticket } from '@/lib/record-data'
 import type { Sale } from '@/lib/tpv-data'
 
 export default function Page() {
-  const [tab, setTab] = useState<Tab>('Inventario')
+  const [tab, setTab] = useState<Tab>('TPV')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [sales, setSales] = useState<Sale[]>([])
   const [cedidos, setCedidos] = useState<Cedido[]>([])
