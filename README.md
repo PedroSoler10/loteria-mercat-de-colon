@@ -63,13 +63,19 @@ Las migraciones pendientes se aplican automáticamente al iniciar una versión n
 
 ### Copia de seguridad y restauración
 
-Para hacer una copia de seguridad:
+La pestaña **Registro** incluye la sección **Base de datos**, desde la que puede:
+
+- Descargar una copia de seguridad sin cerrar la aplicación.
+- Importar un archivo `.db`, `.sqlite` o `.sqlite3` recibido de otra instalación.
+- Copiar la base de datos a una ruta elegida, por ejemplo `D:\Loteria\loteria.db`. Después de guardar una nueva ubicación, cierre y vuelva a abrir `LoteriaMercatDeColon.cmd` para que la aplicación la utilice.
+
+Para hacer una copia de seguridad manual:
 
 1. Cierre la aplicación.
 2. Abra el Explorador de archivos y escriba `%LOCALAPPDATA%\LoteriaMercatDeColon\data` en la barra de direcciones.
 3. Copie `loteria.db` a otra ubicación, preferiblemente a un disco externo o almacenamiento seguro.
 
-Para restaurar una copia:
+Para restaurar una copia desde la aplicación, seleccione el archivo en **Registro → Base de datos → Importar archivo** y recargue la página. También puede hacerlo manualmente:
 
 1. Cierre la aplicación.
 2. Cambie el nombre de la base de datos actual, por ejemplo a `loteria-antes-de-restaurar.db`.

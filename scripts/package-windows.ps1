@@ -61,6 +61,11 @@ New-Item $standaloneNextDirectory -ItemType Directory -Force | Out-Null
 Copy-Item '.next\static' (Join-Path $standaloneNextDirectory 'static') -Recurse -Force
 $standaloneNodeModules = Join-Path $appDirectory '.next\standalone\node_modules'
 New-Item $standaloneNodeModules -ItemType Directory -Force | Out-Null
+$prismaClientPackage = Get-ChildItem (Join-Path $appDirectory 'node_modules\.pnpm') -Directory -Filter '@prisma+client@*' | Select-Object -First 1
+if (-not $prismaClientPackage) {
+  throw 'No se encontró @prisma/client en las dependencias de producción.'
+}
+Copy-Item (Join-Path $prismaClientPackage.FullName 'node_modules\.prisma') (Join-Path $standaloneNodeModules '.prisma') -Recurse -Force
 New-Item (Join-Path $standaloneNodeModules '@swc') -ItemType Directory -Force | Out-Null
 $swcHelpersPackage = Get-ChildItem (Join-Path $appDirectory 'node_modules\.pnpm') -Directory -Filter '@swc+helpers@*' | Select-Object -First 1
 if (-not $swcHelpersPackage) {
@@ -79,6 +84,7 @@ Copy-Item 'scripts' (Join-Path $appDirectory 'scripts') -Recurse
 @'
 @echo off
 set "LOTERIA_DATA_DIR=%LOCALAPPDATA%\LoteriaMercatDeColon\data"
+set "LOTERIA_CONFIG_DIR=%LOCALAPPDATA%\LoteriaMercatDeColon"
 "%~dp0runtime\node.exe" "%~dp0app\scripts\start-local.cjs"
 '@ | Set-Content (Join-Path $OutputDirectory 'LoteriaMercatDeColon.cmd') -Encoding ASCII
 

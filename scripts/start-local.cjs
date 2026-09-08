@@ -1,18 +1,31 @@
-const { existsSync, mkdirSync } = require('node:fs')
+const { existsSync, mkdirSync, readFileSync } = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
-const dataDirectory = process.env.LOTERIA_DATA_DIR
-  ?? path.join(process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? root, 'AppData', 'Local'), 'LoteriaMercatDeColon', 'data')
+const configDirectory = process.env.LOTERIA_CONFIG_DIR
+  ?? path.join(process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? root, 'AppData', 'Local'), 'LoteriaMercatDeColon')
+const defaultDataDirectory = process.env.LOTERIA_DATA_DIR ?? path.join(configDirectory, 'data')
+let dataDirectory = defaultDataDirectory
+let databasePath = path.join(dataDirectory, 'loteria.db')
+try {
+  const configured = JSON.parse(readFileSync(path.join(configDirectory, 'database-location.json'), 'utf8'))
+  if (typeof configured.databasePath === 'string' && path.isAbsolute(configured.databasePath)) {
+    databasePath = configured.databasePath
+    dataDirectory = path.dirname(databasePath)
+  }
+} catch {
+  // The default data directory is used until the user chooses another location.
+}
 mkdirSync(dataDirectory, { recursive: true })
 
 const env = {
   ...process.env,
+  LOTERIA_CONFIG_DIR: configDirectory,
   NODE_ENV: 'production',
   LOTERIA_DATA_DIR: dataDirectory,
-  DATABASE_URL: `file:${path.join(dataDirectory, 'loteria.db')}`,
+  DATABASE_URL: `file:${databasePath}`,
   PORT: process.env.PORT ?? '3000',
   NODE_PATH: path.join(root, 'node_modules'),
 }
