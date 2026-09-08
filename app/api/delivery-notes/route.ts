@@ -169,10 +169,16 @@ export async function POST(request: Request) {
       }
 
       const activeDuplicates = duplicates.filter((ticket) => !purgedOriginIds.includes(ticket.idOrigen))
-      if (activeDuplicates.length > 0) {
+      const isConsignmentTransfer = parsed.originType === 'Cesión de Consignación'
+      if (activeDuplicates.length > 0 && !isConsignmentTransfer) {
         const first = activeDuplicates[0]
         throw new Error(`El boleto ya está cargado: ${first.numeroJugado} / serie ${first.serie} / fracción ${first.fraccion}`)
       }
+
+      const duplicateKeys = new Set(activeDuplicates.map((ticket) => `${ticket.idSorteo}/${ticket.numeroJugado}/${ticket.serie}/${ticket.fraccion}`))
+      const ticketsToCreate = isConsignmentTransfer
+        ? data.filter((ticket) => !duplicateKeys.has(`${ticket.idSorteo}/${ticket.numeroJugado}/${ticket.serie}/${ticket.fraccion}`))
+        : data
 
       await tx.origen.create({
         data: {
@@ -189,7 +195,24 @@ export async function POST(request: Request) {
           pdfChecksum: checksum,
         },
       })
-      await tx.boleto.createMany({ data })
+      await tx.boleto.createMany({ data: ticketsToCreate })
+      if (isConsignmentTransfer) {
+        const existingSales = []
+        for (let offset = 0; offset < data.length; offset += duplicateCheckBatchSize) {
+          const batch = data.slice(offset, offset + duplicateCheckBatchSize)
+          const batchSales = await tx.venta.findMany({
+            where: { idBoleto: { in: batch.map((ticket) => ticket.idBoleto) } },
+            select: { idBoleto: true },
+          })
+          existingSales.push(...batchSales)
+        }
+        const existingSaleIds = new Set(existingSales.map((sale) => sale.idBoleto))
+        await tx.venta.createMany({
+          data: data
+            .filter((ticket) => !existingSaleIds.has(ticket.idBoleto))
+            .map((ticket) => ({ idBoleto: ticket.idBoleto })),
+        })
+      }
       return {
         idOrigen: parsed.sourceId,
         idReceptorAdmin: parsed.receiverAdminId,
