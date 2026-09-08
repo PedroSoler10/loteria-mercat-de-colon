@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { parseSelaeBarcode } from '@/lib/selae-barcode'
 
 type NumericFieldProps = {
   id: string
@@ -40,7 +41,11 @@ function NumericField({ id, label, hint, value, onChange, maxLength, className }
   )
 }
 
-export function ManualEntry() {
+type Props = {
+  onCreated: () => Promise<void>
+}
+
+export function ManualEntry({ onCreated }: Props) {
   const [scan, setScan] = useState('')
   const [tipoJuego, setTipoJuego] = useState('5')
   const [sorteo, setSorteo] = useState('102')
@@ -50,6 +55,25 @@ export function ManualEntry() {
   const [serieHasta, setSerieHasta] = useState('')
   const [fraccion, setFraccion] = useState('')
   const [isFullSeries, setIsFullSeries] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  function handleScan(value: string) {
+    setScan(value)
+    try {
+      const barcode = parseSelaeBarcode(value)
+      setTipoJuego(String(barcode.tipoJuego))
+      setSorteo(String(barcode.numeroSorteo).padStart(3, '0'))
+      setNumero(barcode.numeroJugado)
+      setSerie(barcode.serie)
+      setSerieHasta(barcode.serie)
+      setFraccion(barcode.fraccion)
+      setIsFullSeries(false)
+      setFeedback(null)
+    } catch {
+      // El formulario sigue permitiendo completar manualmente un código parcial.
+    }
+  }
 
   function reset() {
     setScan('')
@@ -57,6 +81,27 @@ export function ManualEntry() {
     setSerie('')
     setSerieHasta('')
     setFraccion('')
+  }
+
+  async function submit() {
+    setSaving(true)
+    setFeedback(null)
+    try {
+      const response = await fetch('/api/manual-entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan, tipoJuego, sorteo, anio, numero, serie, serieHasta, fraccion, isFullSeries }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'No se pudo dar de alta')
+      await onCreated()
+      setFeedback({ type: 'success', text: `${result.count} décimo${result.count === 1 ? '' : 's'} dado${result.count === 1 ? '' : 's'} de alta` })
+      reset()
+    } catch (error) {
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'No se pudo dar de alta' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -75,7 +120,7 @@ export function ManualEntry() {
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          reset()
+          void submit()
         }}
       >
         <div>
@@ -94,11 +139,11 @@ export function ManualEntry() {
               spellCheck={false}
               placeholder="Escanea el código del décimo…"
               value={scan}
-              onChange={(e) => setScan(e.target.value)}
+              onChange={(e) => handleScan(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                   e.preventDefault()
-                  reset()
+                  e.currentTarget.form?.requestSubmit()
                 }
               }}
               className="h-16 border-2 border-primary/40 bg-primary/5 pl-14 font-mono text-2xl tracking-wider tabular-nums placeholder:font-sans placeholder:text-base placeholder:tracking-normal focus-visible:border-primary"
@@ -177,13 +222,18 @@ export function ManualEntry() {
         </div>
 
         <div className="mt-auto flex gap-2">
-          <Button type="submit" size="lg" className="h-12 flex-1 text-base">
-            Dar de alta
+          <Button type="submit" size="lg" className="h-12 flex-1 text-base" disabled={saving}>
+            {saving ? 'Guardando…' : 'Dar de alta'}
           </Button>
           <Button type="button" size="lg" variant="outline" className="h-12 text-base" onClick={reset}>
             Limpiar
           </Button>
         </div>
+        {feedback && (
+          <p role={feedback.type === 'error' ? 'alert' : 'status'} className={feedback.type === 'error' ? 'text-sm text-destructive' : 'text-sm text-primary'}>
+            {feedback.text}
+          </p>
+        )}
       </form>
     </section>
   )

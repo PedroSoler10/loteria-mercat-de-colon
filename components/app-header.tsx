@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils'
 
-export const TABS = ['Registro', 'Inventario', 'TPV', 'Gráficas'] as const
+export const TABS = ['Registro', 'Inventario', 'TPV', 'Análisis'] as const
 export type Tab = (typeof TABS)[number]
 
 type AppHeaderProps = {

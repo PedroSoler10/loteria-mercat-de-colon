@@ -3,6 +3,15 @@ export type Albaran = {
   nombre: string
   numerosDiferentes: number
   totalBoletos: number
+  detalles?: CargaDetalle[]
+}
+
+export type CargaDetalle = {
+  numero: string
+  series: {
+    serie: string
+    fracciones: string[]
+  }[]
 }
 
 export type Ticket = {

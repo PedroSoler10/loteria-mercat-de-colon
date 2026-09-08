@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ticketId, type Ticket } from '@/lib/record-data'
+import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import { InventorySearch, type SearchMode } from './inventory-search'
 import { InventoryStockTable } from './inventory-stock-table'
 
@@ -25,7 +26,15 @@ export function InventoryTab({ tickets, onTicketsChange, onSale }: Props) {
     let list = tickets
     if (onlyAvailable) list = list.filter((t) => !t.vendido)
     if (query) {
-      list = list.filter((t) => (mode === 'termina' ? t.numero.endsWith(query) : t.numero.includes(query)))
+      let barcode: ReturnType<typeof parseSelaeBarcode> | null = null
+      try {
+        barcode = parseSelaeBarcode(query)
+      } catch {
+        // La búsqueda manual por número sigue usando el modo seleccionado.
+      }
+      list = barcode
+        ? list.filter((t) => t.numero === barcode?.numeroJugado && t.serie === barcode?.serie && t.fraccion === barcode?.fraccion)
+        : list.filter((t) => (mode === 'termina' ? t.numero.endsWith(query) : t.numero.includes(query)))
     }
     return list
   }, [tickets, query, mode, onlyAvailable])

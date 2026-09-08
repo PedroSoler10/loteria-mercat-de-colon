@@ -62,7 +62,7 @@ export function TpvSaleSearch({ mode, onModeChange, onScan }: Props) {
           placeholder="Escanea el código del boleto"
           value={code}
           onChange={(event) => {
-            setCode(event.target.value.replace(/[^0-9/ -]/g, ''))
+            setCode(event.target.value.replace(/[^0-9/> -]/g, ''))
             setMessage('')
           }}
           onKeyDown={(event) => {

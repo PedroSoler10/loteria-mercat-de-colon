@@ -18,7 +18,7 @@ import type { Sale } from '@/lib/tpv-data'
 type Props = {
   sale: Sale | null
   onClose: () => void
-  onSave: (id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) => boolean
+  onSave: (id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) => boolean | Promise<boolean>
 }
 
 function toLocalInput(iso: string) {
@@ -55,10 +55,10 @@ export function EditSaleDialog({ sale, onClose, onSave }: Props) {
     Number.isFinite(precioNum) &&
     precioNum >= 0
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!sale || !valid) return
-    const saved = onSave(sale.id, {
+    const saved = await onSave(sale.id, {
       fecha: new Date(fecha).toISOString(),
       precio: precioNum,
       numero: numero.trim(),

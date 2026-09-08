@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { FileUp, FileText } from 'lucide-react'
+import { FileUp, FileText, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -12,23 +12,117 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import type { Albaran } from '@/lib/record-data'
+import type { Albaran, CargaDetalle } from '@/lib/record-data'
 
 type Props = {
   albaranes: Albaran[]
+  onRename: (idOrigen: string, nombre: string) => Promise<string | undefined>
+  onDelete: (idOrigen: string) => Promise<string | undefined>
+  onImported: () => Promise<void>
 }
 
-export function ImportDeliveryNotes({ albaranes }: Props) {
+function isCompleteSeries(fracciones: string[]) {
+  return fracciones.length === 10 && fracciones.every((fraccion, index) => fraccion === String(index + 1).padStart(2, '0'))
+}
+
+function groupSeries(series: CargaDetalle['series']) {
+  const groups: { label: string; fracciones: string[] }[] = []
+  for (const current of series) {
+    const currentNumber = Number(current.serie)
+    const last = groups[groups.length - 1]
+    const lastParts = last?.label.split('-')
+    const lastEnd = lastParts ? Number(lastParts[lastParts.length - 1]) : undefined
+    if (isCompleteSeries(current.fracciones) && last && last.fracciones.length === 10 && lastEnd === currentNumber - 1) {
+      const [start] = last.label.split('-')
+      last.label = `${start}-${currentNumber}`
+    } else {
+      groups.push({
+        label: String(currentNumber),
+        fracciones: current.fracciones,
+      })
+    }
+  }
+  return groups
+}
+
+function DetailColumn({ detalles, kind }: { detalles?: CargaDetalle[]; kind: 'numbers' | 'series' | 'fractions' }) {
+  if (!detalles?.length) return <span className="text-muted-foreground">Sin detalle</span>
+
+  return (
+    <div className="space-y-1 text-sm">
+      {detalles.map((detalle) => {
+        if (kind === 'numbers') {
+          return <div key={detalle.numero} className="font-mono font-semibold tabular-nums">{detalle.numero}</div>
+        }
+
+        return (
+          <div key={detalle.numero} className="space-y-1">
+            {groupSeries(detalle.series).map((serie) => (
+              <div key={`${detalle.numero}-${serie.label}`} className="font-mono tabular-nums">
+                {kind === 'series'
+                  ? serie.label
+                  : isCompleteSeries(serie.fracciones) ? '1-10' : serie.fracciones.join(', ')}
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function ImportDeliveryNotes({ albaranes, onRename, onDelete, onImported }: Props) {
   const [dragging, setDragging] = useState(false)
-  const [pending, setPending] = useState<string[]>([])
+  const [pending, setPending] = useState<File[]>([])
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState('')
+  const [processing, setProcessing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   function handleFiles(files: FileList | null) {
     if (!files) return
-    const names = Array.from(files)
-      .filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
-      .map((f) => f.name)
-    if (names.length) setPending((prev) => [...prev, ...names])
+    const pdfs = Array.from(files).filter((file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))
+    if (pdfs.length) setPending((prev) => [...prev, ...pdfs])
+  }
+
+  async function processPending() {
+    if (pending.length === 0) return
+    setProcessing(true)
+    setActionError('')
+    try {
+      for (const file of pending) {
+        const formData = new FormData()
+        formData.append('file', file)
+        const response = await fetch('/api/delivery-notes', { method: 'POST', body: formData })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error ?? `No se pudo procesar ${file.name}`)
+      }
+      setPending([])
+      await onImported()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'No se pudo procesar el albarán')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  async function rename(origin: Albaran) {
+    const nombre = window.prompt('Nuevo nombre de la carga', origin.nombre)?.trim()
+    if (!nombre || nombre === origin.nombre) return
+    setBusyId(origin.idOrigen)
+    setActionError('')
+    const error = await onRename(origin.idOrigen, nombre)
+    if (error) setActionError(error)
+    setBusyId(null)
+  }
+
+  async function remove(origin: Albaran) {
+    if (!window.confirm(`¿Eliminar la carga «${origin.nombre}» y sus ${origin.totalBoletos} boletos?`)) return
+    setBusyId(origin.idOrigen)
+    setActionError('')
+    const error = await onDelete(origin.idOrigen)
+    if (error) setActionError(error)
+    setBusyId(null)
   }
 
   return (
@@ -92,21 +186,22 @@ export function ImportDeliveryNotes({ albaranes }: Props) {
             {pending.length > 1 ? 's' : ''} de procesar
           </p>
           <ul className="flex flex-col gap-1">
-            {pending.map((name, i) => (
-              <li key={`${name}-${i}`} className="flex items-center gap-2 text-sm">
+            {pending.map((file, i) => (
+              <li key={`${file.name}-${i}`} className="flex items-center gap-2 text-sm">
                 <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className="truncate">{name}</span>
+                <span className="truncate">{file.name}</span>
               </li>
             ))}
           </ul>
           <div className="flex gap-2">
-            <Button size="lg" className="h-11 flex-1 text-base" onClick={() => setPending([])}>
-              Procesar
+            <Button size="lg" className="h-11 flex-1 text-base" disabled={processing} onClick={() => void processPending()}>
+              {processing ? 'Procesando…' : 'Procesar'}
             </Button>
             <Button
               size="lg"
               variant="outline"
               className="h-11 text-base"
+              disabled={processing}
               onClick={() => setPending([])}
             >
               Descartar
@@ -123,6 +218,10 @@ export function ImportDeliveryNotes({ albaranes }: Props) {
               <TableHead>Nombre Albarán</TableHead>
               <TableHead className="text-right">Números Diferentes</TableHead>
               <TableHead className="text-right">Total Boletos</TableHead>
+              <TableHead>Números</TableHead>
+              <TableHead>Series</TableHead>
+              <TableHead>Fracciones</TableHead>
+              <TableHead className="w-24 text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -132,11 +231,41 @@ export function ImportDeliveryNotes({ albaranes }: Props) {
                 <TableCell>{a.nombre}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{a.numerosDiferentes}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{a.totalBoletos}</TableCell>
+                <TableCell><DetailColumn detalles={a.detalles} kind="numbers" /></TableCell>
+                <TableCell><DetailColumn detalles={a.detalles} kind="series" /></TableCell>
+                <TableCell><DetailColumn detalles={a.detalles} kind="fractions" /></TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Modificar nombre de la carga"
+                      aria-label={`Modificar ${a.nombre}`}
+                      disabled={busyId !== null}
+                      onClick={() => void rename(a)}
+                    >
+                      <Pencil aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Eliminar carga"
+                      aria-label={`Eliminar ${a.nombre}`}
+                      disabled={busyId !== null}
+                      onClick={() => void remove(a)}
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </Button>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
     </section>
   )
 }

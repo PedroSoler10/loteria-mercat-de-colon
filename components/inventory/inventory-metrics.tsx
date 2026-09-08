@@ -6,8 +6,8 @@ type Props = { counts: StockCounts }
 export function InventoryMetrics({ counts }: Props) {
   const cards: { label: string; value: number; tone: 'neutral' | 'primary' | 'accent' }[] = [
     { label: 'Recibidos', value: counts.recibidos, tone: 'neutral' },
-    { label: 'Disponibles', value: counts.disponibles, tone: 'primary' },
     { label: 'Vendidos', value: counts.vendidos, tone: 'accent' },
+    { label: 'Disponibles', value: counts.disponibles, tone: 'primary' },
   ]
 
   return (

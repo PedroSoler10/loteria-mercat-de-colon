@@ -5,6 +5,7 @@ import { EditSaleDialog } from './edit-sale-dialog'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
 import { TpvTable } from './tpv-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
+import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import { filterByPeriodo, type Periodo, type Sale } from '@/lib/tpv-data'
 
 type Props = {
@@ -12,11 +13,13 @@ type Props = {
   sales: Sale[]
   onTicketsChange: (next: Ticket[]) => void
   onSale: (ids: string[]) => void
-  onEdit: (id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) => boolean
+  onEdit: (id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) => boolean | Promise<boolean>
   onVoid: (sale: Sale) => void
+  onRestore: (sale: Sale) => void
+  onDelete: (sale: Sale) => void
 }
 
-export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid }: Props) {
+export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete }: Props) {
   const [periodo, setPeriodo] = useState<Periodo>('hoy')
   const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null)
   const [saleMode, setSaleMode] = useState<SaleMode>('fraccion')
@@ -26,6 +29,22 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
     const normalized = code.trim().replace(/[ -]/g, '/')
     const parts = normalized.split('/').filter(Boolean)
     const available = tickets.filter((ticket) => !ticket.vendido)
+    let barcode: ReturnType<typeof parseSelaeBarcode> | null = null
+    try {
+      barcode = parseSelaeBarcode(code)
+    } catch {
+      // También se admiten búsquedas manuales por número, serie y fracción.
+    }
+
+    if (barcode) {
+      const matching = available.filter((ticket) =>
+        ticket.numero === barcode.numeroJugado && ticket.serie === barcode.serie,
+      )
+      if (mode === 'fraccion') {
+        return matching.filter((ticket) => ticket.fraccion === barcode?.fraccion)
+      }
+      return matching
+    }
 
     if (mode === 'fraccion') {
       const exact = available.find((ticket) =>
@@ -59,7 +78,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
   return (
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
-      <TpvTable sales={periodSales} onEdit={setSaleToEdit} onVoid={onVoid} />
+      <TpvTable sales={periodSales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
       <EditSaleDialog sale={saleToEdit} onClose={() => setSaleToEdit(null)} onSave={onEdit} />
     </div>
   )

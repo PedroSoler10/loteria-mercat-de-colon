@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Sorteo {
+  idSorteo      String   @id @map("id_sorteo")
+  tipoJuego     Int      @map("tipo_juego")
+  anoEmision    Int      @map("ano_emision")
+  anoCompleto   Int      @map("ano_completo")
+  numeroSorteo  Int      @map("numero_sorteo")
+  nombreSorteo  String   @map("nombre_sorteo")
+  precioCentimos Int     @map("precio_unitario_centimos")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  boletos Boleto[]
+
+  @@unique([tipoJuego, anoCompleto, numeroSorteo])
+  @@map("sorteos")
+}
+
+model Origen {
+  idOrigen        String   @id @map("id_origen")
+  tipoOrigen      String   @map("tipo_origen")
+  nombreAlbaran   String   @map("nombre_albaran")
+  fechaHoraCarga  DateTime @default(now()) @map("fecha_hora_carga")
+  pdfPath         String?  @map("pdf_path")
+  pdfChecksum     String?  @unique @map("pdf_checksum")
+  deletedAt       DateTime? @map("deleted_at")
+
+  boletos Boleto[]
+
+  @@map("origenes")
+}
+
+model Boleto {
+  idBoleto          String   @id @map("id_boleto")
+  idSorteo          String   @map("id_sorteo")
+  idOrigen          String   @map("id_origen")
+  numeroJugado      String   @map("numero_jugado")
+  serie             String
+  fraccion          String
+  digitosControl    String   @map("digitos_control")
+  codigoBarrasRaw   String   @map("codigo_barras_raw")
+  fechaHoraRegistro DateTime @default(now()) @map("fecha_hora_registro")
+
+  sorteo Sorteo @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
+  origen Origen @relation(fields: [idOrigen], references: [idOrigen], onDelete: Restrict)
+  venta  Venta?
+
+  @@unique([idSorteo, numeroJugado, serie, fraccion])
+  @@index([idSorteo, numeroJugado])
+  @@index([idOrigen])
+  @@map("boletos")
+}
+
+model Venta {
+  idBoleto              String    @id @map("id_boleto")
+  fechaHoraVenta        DateTime  @default(now()) @map("fecha_hora_venta")
+  estado                String    @default("activa")
+  fechaHoraAnulacion    DateTime? @map("fecha_hora_anulacion")
+  motivoAnulacion       String?   @map("motivo_anulacion")
+
+  boleto Boleto @relation(fields: [idBoleto], references: [idBoleto], onDelete: Restrict)
+
+  @@index([estado, fechaHoraVenta])
+  @@map("ventas")
+}

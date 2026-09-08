@@ -128,9 +128,9 @@ La venta rápida tiene dos modos:
 
 Admite identificadores separados por `/`, como `04521/002/3`, y códigos numéricos concatenados, como `045210023`.
 
-### Gráficas
+### Análisis
 
-Implementada en `components/graphics-tab.tsx`.
+Implementada en `components/analysis-tab.tsx`.
 
 Muestra, en este orden:
 
@@ -148,7 +148,7 @@ app/
 
 components/
   app-header.tsx      Cabecera y navegación
-  graphics-tab.tsx    Métricas, arqueo y gráfica diaria
+  analysis-tab.tsx    Métricas, arqueo y análisis diario
   inventory/          Buscador, stock y venta desde inventario
   record/             Registro, albaranes y alta manual
   tpv/                Venta rápida, historial y arqueo
@@ -186,7 +186,7 @@ public/               Recursos estáticos
 - `tpv-sale-search.tsx`: buscador y venta automática por código.
 - `tpv-table.tsx`: historial de ventas.
 - `edit-sale-dialog.tsx`: corrección de ventas.
-- `cash-reconciliation-panel.tsx`: panel de arqueo reutilizado en Gráficas.
+- `cash-reconciliation-panel.tsx`: panel de arqueo reutilizado en Análisis.
 
 ## Datos y estado
 

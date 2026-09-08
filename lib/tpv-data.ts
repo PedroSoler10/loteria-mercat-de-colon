@@ -12,6 +12,7 @@ export type Sale = {
   serie: string
   fraccion: string
   precio: number
+  estado: 'activa' | 'anulada'
 }
 
 export type Periodo = 'hoy' | 'semana' | 'mes'
@@ -33,6 +34,7 @@ export function saleFromTicket(t: Ticket, fecha = new Date(), precio = PRECIO_DE
     serie: t.serie,
     fraccion: t.fraccion,
     precio,
+    estado: 'activa',
   }
 }
 

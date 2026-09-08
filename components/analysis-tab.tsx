@@ -34,7 +34,7 @@ function getDailySales(sales: Sale[]): DailySales[] {
     }))
 }
 
-export function GraphicsTab({ tickets, sales }: Props) {
+export function AnalysisTab({ tickets, sales }: Props) {
   const [periodo, setPeriodo] = useState<Periodo>('hoy')
   const periodSales = useMemo(() => {
     const now = new Date()
@@ -46,9 +46,10 @@ export function GraphicsTab({ tickets, sales }: Props) {
     } else if (periodo === 'mes') {
       from.setDate(1)
     }
-    return sales.filter((sale) => new Date(sale.fecha).getTime() >= from.getTime())
+    return sales.filter((sale) => sale.estado === 'activa' && new Date(sale.fecha).getTime() >= from.getTime())
   }, [sales, periodo])
-  const dailySales = useMemo(() => getDailySales(sales), [sales])
+  const activeSales = useMemo(() => sales.filter((sale) => sale.estado === 'activa'), [sales])
+  const dailySales = useMemo(() => getDailySales(activeSales), [activeSales])
   const maxCount = Math.max(...dailySales.map((day) => day.count), 1)
 
   return (
@@ -69,7 +70,7 @@ export function GraphicsTab({ tickets, sales }: Props) {
             <p className="text-sm text-muted-foreground">Cada fracción vendida cuenta como una operación.</p>
           </div>
           <span className="font-mono text-sm tabular-nums text-muted-foreground">
-            {sales.length} fracciones en total
+            {activeSales.length} fracciones activas en total
           </span>
         </div>
 
