@@ -41,22 +41,23 @@ export default function Page() {
     await refreshData()
   }
 
-  async function renameOrigin(idOrigen: string, nombre: string) {
+  async function updateOrigin(idOrigen: string, patch: Partial<Pick<Albaran, 'idOrigen' | 'nombre' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>>) {
     const response = await fetch(`/api/origins/${encodeURIComponent(idOrigen)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre }),
+      body: JSON.stringify(patch),
     })
     if (!response.ok) return (await response.json()).error ?? 'No se pudo modificar la carga'
     await refreshData()
     return undefined
   }
 
-  async function deleteOrigin(idOrigen: string) {
-    const response = await fetch(`/api/origins/${encodeURIComponent(idOrigen)}`, { method: 'DELETE' })
-    if (!response.ok) return (await response.json()).error ?? 'No se pudo eliminar la carga'
+  async function deleteOrigin(idOrigen: string, deleteSales = false) {
+    const response = await fetch(`/api/origins/${encodeURIComponent(idOrigen)}${deleteSales ? '?deleteSales=true' : ''}`, { method: 'DELETE' })
+    const result = await response.json()
+    if (!response.ok) return { error: result.error ?? 'No se pudo eliminar la carga', salesCount: result.salesCount as number | undefined }
     await refreshData()
-    return undefined
+    return { error: undefined, salesCount: undefined }
   }
 
   async function editSale(id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) {
@@ -104,7 +105,7 @@ export default function Page() {
           <RecordTab
             albaranes={albaranes}
             onManualEntry={refreshData}
-            onRename={renameOrigin}
+            onUpdate={updateOrigin}
             onDelete={deleteOrigin}
             onImported={refreshData}
           />

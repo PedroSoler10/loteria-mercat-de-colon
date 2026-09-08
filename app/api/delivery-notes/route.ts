@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import 'pdfjs-dist/legacy/build/pdf.worker.mjs'
 import { prisma } from '@/lib/prisma'
 import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-parser'
 
@@ -26,7 +28,12 @@ export async function POST(request: Request) {
   let parsed: ReturnType<typeof parseDeliveryNoteItems>
   try {
     const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const document = await getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false }).promise
+    const standardFontDataUrl = pathToFileURL(`${path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts')}${path.sep}`).href
+    const document = await getDocument({
+      data: new Uint8Array(buffer),
+      standardFontDataUrl,
+      useWorkerFetch: false,
+    }).promise
     const items: PdfTextItem[] = []
     const pageTexts: string[] = []
     try {
@@ -49,7 +56,7 @@ export async function POST(request: Request) {
 
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex')
   const existing = await prisma.origen.findFirst({
-    where: { OR: [{ idOrigen: parsed.sourceId }, { pdfChecksum: checksum }] },
+    where: { deletedAt: null, OR: [{ idOrigen: parsed.sourceId }, { pdfChecksum: checksum }] },
   })
   if (existing) {
     return Response.json({ error: `El albarán ${parsed.sourceId} ya está cargado` }, { status: 409 })
@@ -64,6 +71,22 @@ export async function POST(request: Request) {
     await writeFile(absolutePath, buffer)
 
     const result = await prisma.$transaction(async (tx) => {
+      // Una eliminación desde la interfaz es lógica para conservar ventas. Si la
+      // carga eliminada no tiene ventas, se puede depurar y volver a importar.
+      const previousDeletedOrigins = await tx.origen.findMany({
+        where: {
+          deletedAt: { not: null },
+          OR: [{ idOrigen: parsed.sourceId }, { pdfChecksum: checksum }],
+        },
+        select: { idOrigen: true },
+      })
+      for (const previousOrigin of previousDeletedOrigins) {
+        const salesCount = await tx.venta.count({ where: { boleto: { is: { idOrigen: previousOrigin.idOrigen } } } })
+        if (salesCount > 0) throw new Error('El albarán eliminado tiene ventas asociadas y no se puede volver a importar')
+        await tx.boleto.deleteMany({ where: { idOrigen: previousOrigin.idOrigen } })
+        await tx.origen.delete({ where: { idOrigen: previousOrigin.idOrigen } })
+      }
+
       let sorteo = await tx.sorteo.findUnique({
         where: { tipoJuego_anoCompleto_numeroSorteo: { tipoJuego: parsed.tipoJuego, anoCompleto: parsed.year, numeroSorteo: parsed.drawNumber } },
       })
@@ -76,10 +99,12 @@ export async function POST(request: Request) {
             anoEmision: parsed.year % 10,
             anoCompleto: parsed.year,
             numeroSorteo: parsed.drawNumber,
-            nombreSorteo: `Sorteo ${String(parsed.drawNumber).padStart(3, '0')}`,
+            nombreSorteo: parsed.drawName,
             precioCentimos: 0,
           },
         })
+      } else if (sorteo.nombreSorteo !== parsed.drawName) {
+        sorteo = await tx.sorteo.update({ where: { idSorteo: sorteo.idSorteo }, data: { nombreSorteo: parsed.drawName } })
       }
 
       const data = parsed.entries.flatMap((entry) => {
@@ -103,25 +128,53 @@ export async function POST(request: Request) {
 
       const duplicates = await tx.boleto.findMany({
         where: { OR: data.map((ticket) => ({ idSorteo: ticket.idSorteo, numeroJugado: ticket.numeroJugado, serie: ticket.serie, fraccion: ticket.fraccion })) },
-        select: { numeroJugado: true, serie: true, fraccion: true },
+        include: { origen: { select: { deletedAt: true } } },
       })
-      if (duplicates.length > 0) {
-        const first = duplicates[0]
+      const staleOriginIds = Array.from(new Set(
+        duplicates.filter((ticket) => ticket.origen.deletedAt).map((ticket) => ticket.idOrigen),
+      ))
+      const purgedOriginIds: string[] = []
+      for (const staleOriginId of staleOriginIds) {
+        const salesCount = await tx.venta.count({ where: { boleto: { is: { idOrigen: staleOriginId } } } })
+        if (salesCount === 0) {
+          await tx.boleto.deleteMany({ where: { idOrigen: staleOriginId } })
+          await tx.origen.delete({ where: { idOrigen: staleOriginId } })
+          purgedOriginIds.push(staleOriginId)
+        }
+      }
+
+      const activeDuplicates = duplicates.filter((ticket) => !purgedOriginIds.includes(ticket.idOrigen))
+      if (activeDuplicates.length > 0) {
+        const first = activeDuplicates[0]
         throw new Error(`El boleto ya está cargado: ${first.numeroJugado} / serie ${first.serie} / fracción ${first.fraccion}`)
       }
 
       await tx.origen.create({
         data: {
           idOrigen: parsed.sourceId,
-          tipoOrigen: 'Albarán',
+          idSorteo: sorteo.idSorteo,
+          idReceptorAdmin: parsed.receiverAdminId,
+          tipoOrigen: parsed.originType,
           nombreAlbaran: parsed.name,
+          fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
+          totalNumeros: parsed.totalNumbers,
+          totalSeries: parsed.totalSeries,
+          totalBilletes: parsed.totalBilletes,
           pdfPath: relativePath,
           pdfChecksum: checksum,
         },
       })
       await tx.boleto.createMany({ data })
-      return { idOrigen: parsed.sourceId, nombre: parsed.name, totalBoletos: data.length }
-    })
+      return {
+        idOrigen: parsed.sourceId,
+        idReceptorAdmin: parsed.receiverAdminId,
+        tipoOrigen: parsed.originType,
+        nombreSorteo: sorteo.nombreSorteo,
+        totalNumeros: parsed.totalNumbers,
+        totalSeries: parsed.totalSeries,
+        totalBilletes: parsed.totalBilletes,
+      }
+    }, { maxWait: 10_000, timeout: 60_000 })
 
     return Response.json(result, { status: 201 })
   } catch (error) {

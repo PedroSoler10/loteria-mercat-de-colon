@@ -19,6 +19,7 @@ model Sorteo {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   boletos Boleto[]
+  origenes Origen[]
 
   @@unique([tipoJuego, anoCompleto, numeroSorteo])
   @@map("sorteos")
@@ -26,15 +27,23 @@ model Sorteo {
 
 model Origen {
   idOrigen        String   @id @map("id_origen")
+  idSorteo        String?  @map("id_sorteo")
+  idReceptorAdmin String?  @map("id_receptor_admin")
   tipoOrigen      String   @map("tipo_origen")
   nombreAlbaran   String   @map("nombre_albaran")
   fechaHoraCarga  DateTime @default(now()) @map("fecha_hora_carga")
+  fechaEmision    DateTime? @map("fecha_emision")
+  totalNumeros    Int      @default(0) @map("total_numeros")
+  totalSeries     Int      @default(0) @map("total_series")
+  totalBilletes   Int      @default(0) @map("total_billetes")
   pdfPath         String?  @map("pdf_path")
   pdfChecksum     String?  @unique @map("pdf_checksum")
   deletedAt       DateTime? @map("deleted_at")
 
+  sorteo Sorteo? @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
   boletos Boleto[]
 
+  @@index([idSorteo])
   @@map("origenes")
 }
 
