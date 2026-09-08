@@ -55,9 +55,10 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host 'Copiando la compilación y los recursos...'
 New-Item (Join-Path $appDirectory '.next') -ItemType Directory -Force | Out-Null
 New-Item (Join-Path $appDirectory '.next\standalone') -ItemType Directory -Force | Out-Null
-New-Item (Join-Path $appDirectory '.next\static') -ItemType Directory -Force | Out-Null
 Copy-Item '.next\standalone\*' (Join-Path $appDirectory '.next\standalone') -Recurse -Force
-Copy-Item '.next\static' (Join-Path $appDirectory '.next\static') -Recurse -Force
+$standaloneNextDirectory = Join-Path $appDirectory '.next\standalone\.next'
+New-Item $standaloneNextDirectory -ItemType Directory -Force | Out-Null
+Copy-Item '.next\static' (Join-Path $standaloneNextDirectory 'static') -Recurse -Force
 $standaloneNodeModules = Join-Path $appDirectory '.next\standalone\node_modules'
 New-Item $standaloneNodeModules -ItemType Directory -Force | Out-Null
 New-Item (Join-Path $standaloneNodeModules '@swc') -ItemType Directory -Force | Out-Null
@@ -72,7 +73,7 @@ if (-not $nextEnvPackage) {
 }
 New-Item (Join-Path $standaloneNodeModules '@next') -ItemType Directory -Force | Out-Null
 Copy-Item (Join-Path $nextEnvPackage.FullName 'node_modules\@next\env') (Join-Path $standaloneNodeModules '@next\env') -Recurse -Force
-Copy-Item 'public' (Join-Path $appDirectory 'public') -Recurse
+Copy-Item 'public' (Join-Path $appDirectory '.next\standalone\public') -Recurse
 Copy-Item 'scripts' (Join-Path $appDirectory 'scripts') -Recurse
 
 @'
