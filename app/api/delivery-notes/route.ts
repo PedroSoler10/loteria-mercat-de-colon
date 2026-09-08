@@ -59,6 +59,25 @@ export async function POST(request: Request) {
     where: { deletedAt: null, OR: [{ idOrigen: parsed.sourceId }, { pdfChecksum: checksum }] },
   })
   if (existing) {
+    if (existing.pdfChecksum === checksum) {
+      const updated = await prisma.origen.update({
+        where: { idOrigen: existing.idOrigen },
+        data: {
+          nombreAlbaran: parsed.name,
+          tipoOrigen: parsed.originType,
+          fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
+          totalNumeros: parsed.totalNumbers,
+          totalSeries: parsed.totalSeries,
+          totalBilletes: parsed.totalBilletes,
+        },
+      })
+      return Response.json({
+        idOrigen: updated.idOrigen,
+        nombre: updated.nombreAlbaran,
+        tipoOrigen: updated.tipoOrigen,
+        updated: true,
+      })
+    }
     return Response.json({ error: `El albarán ${parsed.sourceId} ya está cargado` }, { status: 409 })
   }
 
