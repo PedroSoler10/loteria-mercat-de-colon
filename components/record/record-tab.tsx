@@ -19,7 +19,7 @@ export function RecordTab({ albaranes, onManualEntry, onUpdate, onDelete, onImpo
         <ManualEntry onCreated={onManualEntry} />
       </div>
       <ImportedDeliveryNotesTable albaranes={albaranes} onUpdate={onUpdate} onDelete={onDelete} />
-      <CedidoRecordsTable cedidos={cedidos} />
+      <CedidoRecordsTable cedidos={cedidos} onUpdate={onUpdate} onDelete={onDelete} />
     </div>
   )
 }

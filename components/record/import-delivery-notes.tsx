@@ -21,7 +21,7 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
   return <ChevronRight aria-hidden="true" className={cn('size-5 shrink-0 transition-transform duration-150', open && 'rotate-90', className)} />
 }
 
-export function CedidoRecordsTable({ cedidos }: { cedidos: Cedido[] }) {
+export function CedidoRecordsTable({ cedidos, onUpdate, onDelete }: { cedidos: Cedido[]; onUpdate: TableProps['onUpdate']; onDelete: TableProps['onDelete'] }) {
   type OriginGroup = { idOrigen: string; nombreAlbaran: string; items: Cedido[] }
   type TypeGroup = { tipoOrigen: string; origenes: OriginGroup[] }
   type DrawGroup = { nombreSorteo: string; tipos: TypeGroup[] }
@@ -30,6 +30,12 @@ export function CedidoRecordsTable({ cedidos }: { cedidos: Cedido[] }) {
   const [openOrigins, setOpenOrigins] = useState<Set<string>>(new Set())
   const [openNumbers, setOpenNumbers] = useState<Set<string>>(new Set())
   const [openSeries, setOpenSeries] = useState<Set<string>>(new Set())
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Albaran | null>(null)
+  const [draft, setDraft] = useState<OriginPatch | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState<Albaran | null>(null)
+  const [deleteWithSales, setDeleteWithSales] = useState<{ origin: Albaran; salesCount: number } | null>(null)
+  const [error, setError] = useState('')
   const draws = useMemo<DrawGroup[]>(() => {
     const byDraw = new Map<string, Map<string, Map<string, OriginGroup>>>()
     for (const cedido of cedidos) {
@@ -70,27 +76,72 @@ export function CedidoRecordsTable({ cedidos }: { cedidos: Cedido[] }) {
     setOpenOrigins(new Set(draws.flatMap((draw) => draw.tipos.flatMap((type) => type.origenes.map((origin) => origin.idOrigen)))))
   }
   function collapseAll() { setOpenDraws(new Set()); setOpenTypes(new Set()); setOpenOrigins(new Set()); setOpenNumbers(new Set()); setOpenSeries(new Set()) }
+  function originAsAlbaran(origin: OriginGroup): Albaran {
+    const first = origin.items[0]
+    const numbers = new Set(origin.items.map((item) => item.numero))
+    const series = new Set(origin.items.map((item) => `${item.numero}/${item.serie}`))
+    return {
+      idOrigen: origin.idOrigen,
+      nombre: origin.nombreAlbaran,
+      nombreSorteo: first.sorteo,
+      tipoOrigen: 'Cesión de Consignación',
+      fechaCarga: first.fecha,
+      fechaEmision: first.fecha,
+      pdfPath: null,
+      pdfChecksum: null,
+      numerosDiferentes: numbers.size,
+      totalSeries: series.size,
+      totalBoletos: origin.items.length,
+    }
+  }
+  function startEditing(origin: OriginGroup) {
+    const albaran = originAsAlbaran(origin)
+    setError('')
+    setEditing(albaran)
+    setDraft({ idOrigen: albaran.idOrigen, nombre: albaran.nombre, tipoOrigen: albaran.tipoOrigen, fechaCarga: albaran.fechaCarga, pdfPath: albaran.pdfPath, pdfChecksum: albaran.pdfChecksum })
+  }
+  function updateDraft<K extends keyof OriginPatch>(key: K, value: OriginPatch[K]) {
+    setDraft((current) => current ? { ...current, [key]: value } : current)
+  }
+  async function save() {
+    if (!editing || !draft) return
+    setBusyId(editing.idOrigen)
+    const result = await onUpdate(editing.idOrigen, draft)
+    if (result) setError(result); else setEditing(null)
+    setBusyId(null)
+  }
+  async function remove(origin: Albaran, deleteSales = false) {
+    setBusyId(origin.idOrigen)
+    const result = await onDelete(origin.idOrigen, deleteSales)
+    if (result.salesCount) setDeleteWithSales({ origin, salesCount: result.salesCount })
+    else if (result.error) setError(result.error)
+    setBusyId(null)
+  }
   return <section aria-labelledby="cedidos-registro-title" className="flex flex-col gap-4 rounded-lg border bg-card p-5 shadow-sm">
     <div className="flex items-center justify-between"><div className="flex items-baseline gap-3"><h2 id="cedidos-registro-title" className="text-lg font-semibold">Cedidos</h2><span className="text-sm text-muted-foreground">{cedidos.length} registros</span></div><div className="flex gap-2"><Button variant="outline" className="h-10" onClick={expandAll}>Desplegar todo</Button><Button variant="outline" className="h-10" onClick={collapseAll}>Contraer todo</Button></div></div>
-    <div className="overflow-x-auto rounded-md border"><Table className="min-w-[1400px] table-auto"><TableHeader><TableRow className="bg-muted/60 hover:bg-muted/60"><TableHead>Nombre del Sorteo</TableHead><TableHead>Tipo de Origen</TableHead><TableHead>ID</TableHead><TableHead>Fecha de cesión</TableHead><TableHead className="text-right">Total Números</TableHead><TableHead>Números</TableHead><TableHead className="text-right">Total Series</TableHead><TableHead>Series</TableHead><TableHead className="text-right">Total Fracciones</TableHead><TableHead>Fracciones</TableHead><TableHead>Recibido</TableHead></TableRow></TableHeader><TableBody>
+    <div className="overflow-x-auto rounded-md border"><Table className="min-w-[1400px] table-auto"><TableHeader><TableRow className="bg-muted/60 hover:bg-muted/60"><TableHead>Nombre del Sorteo</TableHead><TableHead>Tipo de Origen</TableHead><TableHead>ID</TableHead><TableHead>Fecha de cesión</TableHead><TableHead className="text-right">Total Números</TableHead><TableHead>Números</TableHead><TableHead className="text-right">Total Series</TableHead><TableHead>Series</TableHead><TableHead className="text-right">Total Fracciones</TableHead><TableHead>Fracciones</TableHead><TableHead className="text-center">Acciones</TableHead></TableRow></TableHeader><TableBody>
       {draws.length === 0 && <TableRow><TableCell colSpan={11} className="h-24 text-center text-muted-foreground">Sin cesiones registradas.</TableCell></TableRow>}
       {draws.map((draw) => { const drawOpen = openDraws.has(draw.nombreSorteo); const origins = draw.tipos.flatMap((type) => type.origenes); const drawTotals = totals(origins); return <Fragment key={draw.nombreSorteo}>
         <TableRow className={cn('cursor-pointer bg-card', drawOpen && 'bg-primary/5 hover:bg-primary/5')} onClick={() => toggle(openDraws, draw.nombreSorteo, setOpenDraws)}><TableCell className="p-1 font-semibold"><ToggleLabel open={drawOpen} label={draw.nombreSorteo} onClick={() => toggle(openDraws, draw.nombreSorteo, setOpenDraws)} /></TableCell><TableCell className="text-muted-foreground">{draw.tipos.length} tipos</TableCell><TableCell className="text-muted-foreground">{origins.length} importaciones</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{drawTotals.numeros}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{drawTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{drawTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
         {drawOpen && draw.tipos.map((type) => { const typeKey = `${draw.nombreSorteo}/${type.tipoOrigen}`; const typeOpen = openTypes.has(typeKey); const typeTotals = totals(type.origenes); return <Fragment key={typeKey}>
           <TableRow className={cn('cursor-pointer bg-muted/30', typeOpen && 'bg-muted/60 hover:bg-muted/60')} onClick={() => toggle(openTypes, typeKey, setOpenTypes)}><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 text-sm text-muted-foreground">{draw.nombreSorteo}</span></TableCell><TableCell className="p-1 font-medium"><ToggleLabel compact open={typeOpen} label={type.tipoOrigen} onClick={() => toggle(openTypes, typeKey, setOpenTypes)} /></TableCell><TableCell className="text-muted-foreground">{type.origenes.length} importaciones</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{typeTotals.numeros}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{typeTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{typeTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
           {typeOpen && type.origenes.map((origin) => { const originOpen = openOrigins.has(origin.idOrigen); const groups = groupedNumbers(origin.items); const originTotals = totals([origin]); return <Fragment key={origin.idOrigen}>
-            <TableRow className={cn('cursor-pointer bg-card', originOpen && 'bg-primary/5 hover:bg-primary/5')} onClick={() => toggle(openOrigins, origin.idOrigen, setOpenOrigins)}><TableCell><span className="ml-6 block border-l-2 border-primary/20 pl-4 text-sm text-muted-foreground">{draw.nombreSorteo}</span></TableCell><TableCell className="text-muted-foreground">Cesión de Consignación</TableCell><TableCell className="p-1"><ToggleLabel compact open={originOpen} label={origin.idOrigen} onClick={() => toggle(openOrigins, origin.idOrigen, setOpenOrigins)} /></TableCell><TableCell className="font-mono text-sm tabular-nums">{origin.items[0] ? formatFechaHora(origin.items[0].fecha).fecha : '—'}</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.numeros}</TableCell><TableCell className="text-muted-foreground">{origin.nombreAlbaran}</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
+            <TableRow className={cn('cursor-pointer bg-card', originOpen && 'bg-primary/5 hover:bg-primary/5')} onClick={() => toggle(openOrigins, origin.idOrigen, setOpenOrigins)}><TableCell><span className="ml-6 block border-l-2 border-primary/20 pl-4 text-sm text-muted-foreground">{draw.nombreSorteo}</span></TableCell><TableCell className="text-muted-foreground">Cesión de Consignación</TableCell><TableCell className="p-1"><ToggleLabel compact open={originOpen} label={origin.idOrigen} onClick={() => toggle(openOrigins, origin.idOrigen, setOpenOrigins)} /></TableCell><TableCell className="font-mono text-sm tabular-nums">{origin.items[0] ? formatFechaHora(origin.items[0].fecha).fecha : '—'}</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.numeros}</TableCell><TableCell className="text-muted-foreground">{origin.nombreAlbaran}</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.series}</TableCell><TableCell>—</TableCell><TableCell className="text-right font-mono tabular-nums">{originTotals.fracciones}</TableCell><TableCell>—</TableCell><TableCell className="text-center"><div className="flex justify-center gap-1"><Button type="button" variant="ghost" size="icon-sm" title="Modificar registro del albarán" aria-label={`Modificar ${origin.nombreAlbaran}`} disabled={busyId !== null} onClick={(event) => { event.stopPropagation(); startEditing(origin) }}><Pencil /></Button><Button type="button" variant="ghost" size="icon-sm" title="Eliminar carga" aria-label={`Eliminar ${origin.nombreAlbaran}`} disabled={busyId !== null} onClick={(event) => { event.stopPropagation(); setDeleteConfirmation(originAsAlbaran(origin)) }}><Trash2 /></Button></div></TableCell></TableRow>
             {originOpen && groups.map((group) => { const numberKey = `${origin.idOrigen}/${group.numero}`; const numberOpen = openNumbers.has(numberKey); const count = group.series.reduce((sum, [, items]) => sum + items.length, 0); return <Fragment key={numberKey}>
               <TableRow className={cn('cursor-pointer bg-muted/20', numberOpen && 'bg-muted/40 hover:bg-muted/40')} onClick={() => toggle(openNumbers, numberKey, setOpenNumbers)}><TableCell /><TableCell /><TableCell /><TableCell /><TableCell className="text-right font-mono tabular-nums">1</TableCell><TableCell className="p-1"><ToggleLabel compact open={numberOpen} label={group.numero} onClick={() => toggle(openNumbers, numberKey, setOpenNumbers)} /></TableCell><TableCell className="text-right font-mono tabular-nums">{group.series.length}</TableCell><TableCell>{group.series.length} series</TableCell><TableCell className="text-right font-mono tabular-nums">{count}</TableCell><TableCell>—</TableCell><TableCell /></TableRow>
               {numberOpen && group.series.map(([serie, items]) => { const seriesKey = `${numberKey}/${serie}`; const seriesOpen = openSeries.has(seriesKey); return <Fragment key={seriesKey}>
                 <TableRow className={cn('cursor-pointer bg-muted/10', seriesOpen && 'bg-muted/30 hover:bg-muted/30')} onClick={() => toggle(openSeries, seriesKey, setOpenSeries)}><TableCell /><TableCell /><TableCell /><TableCell /><TableCell /><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{group.numero}</span></TableCell><TableCell className="text-right font-mono tabular-nums">1</TableCell><TableCell className="p-1"><ToggleLabel compact open={seriesOpen} label={serie} onClick={() => toggle(openSeries, seriesKey, setOpenSeries)} /></TableCell><TableCell className="text-right font-mono tabular-nums">{items.length}</TableCell><TableCell>{items.length} fracc.</TableCell><TableCell /></TableRow>
-                {seriesOpen && items.map((item) => <TableRow key={item.id} className="bg-card"><TableCell /><TableCell /><TableCell /><TableCell /><TableCell /><TableCell><span className="ml-6 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{item.numero}</span></TableCell><TableCell /><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{item.serie}</span></TableCell><TableCell className="text-right font-mono font-semibold">{item.fraccion}</TableCell><TableCell>—</TableCell><TableCell>{item.idBoleto ? 'Sí' : 'No'}</TableCell></TableRow>)}
+                {seriesOpen && items.map((item) => <TableRow key={item.id} className="bg-card"><TableCell /><TableCell /><TableCell /><TableCell /><TableCell /><TableCell><span className="ml-6 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{item.numero}</span></TableCell><TableCell /><TableCell><span className="ml-3 block border-l-2 border-primary/20 pl-4 font-mono text-sm text-muted-foreground">{item.serie}</span></TableCell><TableCell className="text-right font-mono font-semibold">{item.fraccion}</TableCell><TableCell>{item.idBoleto ? 'Sí' : 'No'}</TableCell><TableCell /></TableRow>)}
               </Fragment> })}
             </Fragment> })}
           </Fragment> })}
         </Fragment> })}
       </Fragment>})}
     </TableBody></Table></div>
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    <Dialog open={Boolean(editing)} onOpenChange={(open) => { if (!open) setEditing(null) }}><DialogContent className="sm:max-w-xl" showCloseButton={busyId === null}><DialogHeader><DialogTitle>Modificar registro del albarán</DialogTitle><DialogDescription>Los totales se calculan desde las cesiones y no se editan aquí.</DialogDescription></DialogHeader>{draft && <div className="grid gap-3 sm:grid-cols-2"><div><Label htmlFor="cedido-origin-id">ID de origen</Label><Input id="cedido-origin-id" value={draft.idOrigen} onChange={(event) => updateDraft('idOrigen', event.target.value)} /></div><div><Label htmlFor="cedido-origin-type">Tipo de origen</Label><Input id="cedido-origin-type" value={draft.tipoOrigen} onChange={(event) => updateDraft('tipoOrigen', event.target.value)} /></div><div className="sm:col-span-2"><Label htmlFor="cedido-origin-name">Nombre del albarán</Label><Input id="cedido-origin-name" value={draft.nombre} onChange={(event) => updateDraft('nombre', event.target.value)} /></div><div><Label htmlFor="cedido-origin-date">Fecha de carga</Label><Input id="cedido-origin-date" type="datetime-local" value={draft.fechaCarga.slice(0, 16)} onChange={(event) => updateDraft('fechaCarga', event.target.value)} /></div></div>}<DialogFooter><Button variant="outline" onClick={() => setEditing(null)} disabled={busyId !== null}>Cancelar</Button><Button onClick={() => void save()} disabled={busyId !== null}>{busyId ? 'Guardando…' : 'Guardar cambios'}</Button></DialogFooter></DialogContent></Dialog>
+    <AlertDialog open={Boolean(deleteConfirmation)} onOpenChange={(open) => { if (!open) setDeleteConfirmation(null) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Eliminar esta carga?</AlertDialogTitle><AlertDialogDescription>{deleteConfirmation && `Se eliminará «${deleteConfirmation.nombre}» y sus ${deleteConfirmation.totalBoletos} fracciones.`}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busyId !== null}>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busyId !== null} onClick={() => { if (deleteConfirmation) void remove(deleteConfirmation); setDeleteConfirmation(null) }}>Eliminar carga</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={Boolean(deleteWithSales)} onOpenChange={(open) => { if (!open) setDeleteWithSales(null) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>La carga tiene ventas asociadas</AlertDialogTitle><AlertDialogDescription>{deleteWithSales && `«${deleteWithSales.origin.nombre}» tiene ${deleteWithSales.salesCount} venta${deleteWithSales.salesCount === 1 ? '' : 's'}. ¿Quieres eliminar también esas ventas?`}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busyId !== null}>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busyId !== null} onClick={() => { if (deleteWithSales) void remove(deleteWithSales.origin, true); setDeleteWithSales(null) }}>Eliminar carga y ventas</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>
 }
 
