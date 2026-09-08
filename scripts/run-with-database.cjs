@@ -9,22 +9,23 @@ if (!env.DATABASE_URL) {
   env.DATABASE_URL = 'file:../data/loteria.db'
 }
 
-const command = process.platform === 'win32' ? 'corepack.cmd' : 'corepack'
+const command = process.platform === 'win32' ? process.execPath : 'corepack'
+const commandArgs = process.platform === 'win32'
+  ? [path.join(process.env.ProgramW6432 ?? 'C:\\Program Files', 'nodejs', 'node_modules', 'corepack', 'dist', 'corepack.js')]
+  : []
 const packageManager = ['pnpm']
-const migrate = spawnSync(command, [...packageManager, 'exec', 'prisma', 'migrate', 'deploy'], {
+const migrate = spawnSync(command, [...commandArgs, ...packageManager, 'exec', 'prisma', 'migrate', 'deploy'], {
   cwd: root,
   env,
   stdio: 'inherit',
-  shell: process.platform === 'win32',
 })
 
 if (migrate.status !== 0) process.exit(migrate.status ?? 1)
 
-const next = spawnSync(command, [...packageManager, 'exec', 'next', process.argv[2]], {
+const next = spawnSync(command, [...commandArgs, ...packageManager, 'exec', 'next', process.argv[2]], {
   cwd: root,
   env,
   stdio: 'inherit',
-  shell: process.platform === 'win32',
 })
 
 process.exit(next.status ?? 1)
