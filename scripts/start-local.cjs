@@ -14,6 +14,7 @@ const env = {
   LOTERIA_DATA_DIR: dataDirectory,
   DATABASE_URL: `file:${path.join(dataDirectory, 'loteria.db')}`,
   PORT: process.env.PORT ?? '3000',
+  NODE_PATH: path.join(root, 'node_modules'),
 }
 
 const prismaCli = path.join(root, 'node_modules', 'prisma', 'build', 'index.js')
