@@ -142,10 +142,9 @@ export default function Page() {
             onVoid={voidSale}
             onRestore={restoreSale}
             onDelete={permanentlyDeleteSale}
-            cedidos={cedidos}
           />
         )}
-        {tab === 'Análisis' && <AnalysisTab tickets={tickets} sales={sales} />}
+        {tab === 'Análisis' && <AnalysisTab tickets={tickets} sales={sales} cedidos={cedidos} />}
       </main>
     </div>
   )

@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react'
 import { InventoryMetrics } from '@/components/inventory/inventory-metrics'
 import { CashReconciliationPanel } from '@/components/tpv/cash-reconciliation-panel'
-import { countStock, type Ticket } from '@/lib/record-data'
+import { countStock, type Cedido, type Ticket } from '@/lib/record-data'
 import type { Periodo, Sale } from '@/lib/tpv-data'
 
 type Props = {
   tickets: Ticket[]
   sales: Sale[]
+  cedidos: Cedido[]
 }
 
 type DailySales = {
@@ -34,7 +35,7 @@ function getDailySales(sales: Sale[]): DailySales[] {
     }))
 }
 
-export function AnalysisTab({ tickets, sales }: Props) {
+export function AnalysisTab({ tickets, sales, cedidos }: Props) {
   const [periodo, setPeriodo] = useState<Periodo>('hoy')
   const periodSales = useMemo(() => {
     const now = new Date()
@@ -54,7 +55,7 @@ export function AnalysisTab({ tickets, sales }: Props) {
 
   return (
     <div className="flex flex-col gap-5">
-      <InventoryMetrics counts={countStock(tickets)} />
+      <InventoryMetrics counts={{ ...countStock(tickets), cedidos: cedidos.length }} />
       <CashReconciliationPanel
         periodo={periodo}
         onPeriodoChange={setPeriodo}

@@ -4,14 +4,17 @@ import { cn } from '@/lib/utils'
 type Props = { counts: StockCounts }
 
 export function InventoryMetrics({ counts }: Props) {
-  const cards: { label: string; value: number; tone: 'neutral' | 'primary' | 'accent' }[] = [
+  const availablePercentage = counts.recibidos > 0 ? (counts.disponibles / counts.recibidos) * 100 : 0
+  const cards: { label: string; value: number | string; tone: 'neutral' | 'primary' | 'accent' }[] = [
     { label: 'Recibidos', value: counts.recibidos, tone: 'neutral' },
+    { label: 'Cedidos', value: counts.cedidos, tone: 'accent' },
     { label: 'Vendidos', value: counts.vendidos, tone: 'accent' },
     { label: 'Disponibles', value: counts.disponibles, tone: 'primary' },
+    { label: '% disponibles / recibidos', value: `${availablePercentage.toLocaleString('es-ES', { maximumFractionDigits: 2 })}%`, tone: 'primary' },
   ]
 
   return (
-    <div className="grid grid-cols-3 gap-4" aria-live="polite">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-5" aria-live="polite">
       {cards.map((c) => (
         <div
           key={c.label}
@@ -31,7 +34,7 @@ export function InventoryMetrics({ counts }: Props) {
             {c.label}
           </span>
           <span className="font-mono text-4xl font-semibold tabular-nums leading-none">
-            {c.value.toLocaleString('es-ES')}
+            {typeof c.value === 'number' ? c.value.toLocaleString('es-ES') : c.value}
           </span>
         </div>
       ))}
