@@ -20,12 +20,14 @@ type Grouping = 'day' | 'week' | 'month'
 function groupKey(date: Date, grouping: Grouping) {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
-  if (grouping === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  if (grouping === 'month') return localDate.slice(0, 7)
   if (grouping === 'week') {
     const day = (d.getDay() + 6) % 7
     d.setDate(d.getDate() - day)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
-  return d.toISOString().slice(0, 10)
+  return localDate
 }
 
 function groupLabel(key: string, grouping: Grouping) {
