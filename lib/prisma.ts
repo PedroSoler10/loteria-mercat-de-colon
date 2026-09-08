@@ -1,4 +1,11 @@
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 import { PrismaClient } from '@prisma/client'
+
+if (!process.env.DATABASE_URL) {
+  mkdirSync(path.join(process.cwd(), 'data'), { recursive: true })
+  process.env.DATABASE_URL = 'file:../data/loteria.db'
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient

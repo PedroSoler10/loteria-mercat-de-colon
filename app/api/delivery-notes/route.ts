@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { prisma } from '@/lib/prisma'
 import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-parser'
 
@@ -25,7 +26,10 @@ export async function POST(request: Request) {
   const buffer = Buffer.from(await file.arrayBuffer())
   let parsed: ReturnType<typeof parseDeliveryNoteItems>
   try {
-    const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    GlobalWorkerOptions.workerSrc = pathToFileURL(
+      path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+    ).href
     const document = await getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false }).promise
     const items: PdfTextItem[] = []
     const pageTexts: string[] = []
@@ -48,16 +52,32 @@ export async function POST(request: Request) {
   }
 
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex')
+  const relativePath = path.join('data', 'albaranes', `${parsed.sourceId}.pdf`)
+  const absoluteDirectory = path.join(process.cwd(), 'data', 'albaranes')
+  const absolutePath = path.join(process.cwd(), relativePath)
   const existing = await prisma.origen.findFirst({
     where: { OR: [{ idOrigen: parsed.sourceId }, { pdfChecksum: checksum }] },
   })
   if (existing) {
+    if (existing.idOrigen === parsed.sourceId && existing.deletedAt && existing.pdfChecksum === checksum) {
+      await prisma.origen.update({
+        where: { idOrigen: existing.idOrigen },
+        data: {
+          deletedAt: null,
+          nombreAlbaran: parsed.name,
+          pdfPath: relativePath,
+          pdfChecksum: checksum,
+        },
+      })
+      return Response.json({
+        idOrigen: existing.idOrigen,
+        nombre: parsed.name,
+        totalBoletos: await prisma.boleto.count({ where: { idOrigen: existing.idOrigen } }),
+        restored: true,
+      })
+    }
     return Response.json({ error: `El albarán ${parsed.sourceId} ya está cargado` }, { status: 409 })
   }
-
-  const relativePath = path.join('data', 'albaranes', `${parsed.sourceId}.pdf`)
-  const absoluteDirectory = path.join(process.cwd(), 'data', 'albaranes')
-  const absolutePath = path.join(process.cwd(), relativePath)
 
   try {
     await mkdir(absoluteDirectory, { recursive: true })
@@ -121,7 +141,7 @@ export async function POST(request: Request) {
       })
       await tx.boleto.createMany({ data })
       return { idOrigen: parsed.sourceId, nombre: parsed.name, totalBoletos: data.length }
-    })
+    }, { timeout: 60_000 })
 
     return Response.json(result, { status: 201 })
   } catch (error) {

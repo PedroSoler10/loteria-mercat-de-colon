@@ -48,8 +48,12 @@ function detectName(text: string) {
 
 function readHeader(text: string, fileName: string) {
   const normalized = text.replace(/\u00a0/g, ' ').replace(/\r/g, '')
-  const sourceId = normalized.match(/Nº\s*albarán\s+(\d{6,})/i)?.[1] ?? sourceIdFromFileName(fileName)
+  const sourceId = normalized.match(/Nº\s*albarán\s+(\d{6,})/i)?.[1]
+    ?? normalized.match(/Sorteo\s+(\d{6,})/i)?.[1]
+    ?? normalized.match(/\b(\d{9})\b/)?.[1]
+    ?? sourceIdFromFileName(fileName)
   const separatedDraw = normalized.match(/(?:^|\s)(\d{4})\s+\d{1,2}\/\d{1,2}\/\d{2}\s+\d{1,3}\s+(\d{1,3})\s+de(?:\s|$)/i)
+    ?? normalized.match(/(?:^|\s)(\d{4})\s+\d{1,2}\/\d{1,2}\/\d{2}\s+\d{1,3}\s+de\s+(\d{1,3})(?:\s|$)/i)
   const standardDraw = normalized.match(/Sorteo\s+(\d{1,3})\s+de\s+(\d{4})/i)
   const year = separatedDraw ? Number(separatedDraw[1]) : Number(standardDraw?.[2])
   const drawNumber = separatedDraw ? Number(separatedDraw[2]) : Number(standardDraw?.[1])

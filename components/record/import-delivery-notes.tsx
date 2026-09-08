@@ -216,8 +216,8 @@ export function ImportDeliveryNotes({ albaranes, onRename, onDelete, onImported 
             <TableRow className="bg-muted/60 hover:bg-muted/60">
               <TableHead>ID Origen</TableHead>
               <TableHead>Nombre Albarán</TableHead>
-              <TableHead className="text-right">Números Diferentes</TableHead>
-              <TableHead className="text-right">Total Boletos</TableHead>
+              <TableHead className="text-right">Total Fracciones</TableHead>
+              <TableHead className="text-right">Fracciones</TableHead>
               <TableHead>Números</TableHead>
               <TableHead>Series</TableHead>
               <TableHead>Fracciones</TableHead>

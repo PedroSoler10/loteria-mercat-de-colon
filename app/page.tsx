@@ -21,7 +21,22 @@ export default function Page() {
       fetch('/api/sales', { cache: 'no-store' }),
       fetch('/api/origins', { cache: 'no-store' }),
     ])
-    if (!inventoryResponse.ok || !salesResponse.ok || !originsResponse.ok) throw new Error('No se pudo cargar la base de datos')
+    const failedResponse = [
+      ['/api/inventory', inventoryResponse] as const,
+      ['/api/sales', salesResponse] as const,
+      ['/api/origins', originsResponse] as const,
+    ].find(([, response]) => !response.ok)
+    if (failedResponse) {
+      const [endpoint, response] = failedResponse
+      let detail = `${response.status} ${response.statusText}`.trim()
+      try {
+        const body = (await response.clone().json()) as { error?: string }
+        if (body.error) detail = body.error
+      } catch {
+        // Keep the HTTP status when the server did not return JSON.
+      }
+      throw new Error(`No se pudo cargar ${endpoint}: ${detail}`)
+    }
     setTickets(await inventoryResponse.json())
     setSales(await salesResponse.json())
     setAlbaranes(await originsResponse.json())
