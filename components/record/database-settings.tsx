@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string
+    types?: Array<{ description: string; accept: Record<string, string[]> }>
+  }) => Promise<FileSystemFileHandle>
+}
+
 export function DatabaseSettings() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [databasePath, setDatabasePath] = useState('')
@@ -70,6 +77,33 @@ export function DatabaseSettings() {
     }
   }
 
+  async function browseAndSave() {
+    const picker = (window as SaveFilePickerWindow).showSaveFilePicker
+    if (!picker) {
+      setFeedback('Este navegador no permite abrir el explorador para guardar. Escribe la ruta completa manualmente.')
+      return
+    }
+    setBusy(true)
+    setFeedback(null)
+    try {
+      const response = await fetch('/api/database/download')
+      if (!response.ok) throw new Error('No se pudo preparar la copia de la base de datos')
+      const handle = await picker({
+        suggestedName: 'loteria.db',
+        types: [{ description: 'Base de datos SQLite', accept: { 'application/octet-stream': ['.db', '.sqlite', '.sqlite3'] } }],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(await response.blob())
+      await writable.close()
+      setFeedback('Copia guardada en la ubicación elegida. Para usarla como base activa, copia su ruta completa en el campo y pulsa «Guardar en esta ubicación».')
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setFeedback(error instanceof Error ? error.message : 'No se pudo guardar la copia')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function downloadDatabase() {
     const response = await fetch('/api/database/download')
     if (!response.ok) {
@@ -101,9 +135,14 @@ export function DatabaseSettings() {
         <div className="flex flex-col gap-2">
           <Label htmlFor="database-file">Importar una base de datos SQLite</Label>
           <Input id="database-file" ref={fileInput} type="file" accept=".db,.sqlite,.sqlite3" />
-          <Button type="button" variant="outline" onClick={() => void importDatabase()} disabled={busy}>
-            <Upload /> {busy ? 'Importando…' : 'Importar archivo'}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}>
+              <Upload /> Examinar…
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void importDatabase()} disabled={busy}>
+              {busy ? 'Importando…' : 'Importar archivo'}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="database-path">Guardar y usar otra ubicación</Label>
@@ -113,9 +152,14 @@ export function DatabaseSettings() {
             onChange={(event) => setDestinationPath(event.target.value)}
             placeholder="C:\Datos\loteria.db"
           />
-          <Button type="button" variant="outline" onClick={() => void saveToLocation()} disabled={busy}>
-            <Database /> Guardar en esta ubicación
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => void browseAndSave()} disabled={busy}>
+              <Database /> Examinar y guardar copia
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void saveToLocation()} disabled={busy}>
+              Guardar y usar ruta
+            </Button>
+          </div>
         </div>
       </div>
       <Button type="button" variant="ghost" className="mt-3" onClick={() => void downloadDatabase()}>
