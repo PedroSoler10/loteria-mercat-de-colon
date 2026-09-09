@@ -292,10 +292,18 @@ La ubicación de datos puede cambiarse con `LOTERIA_DATA_DIR`. Si no se especifi
 El script:
 
 ```powershell
-npm run package:windows
+corepack pnpm package:windows
 ```
 
-ejecuta la compilación y genera `dist\LoteriaMercatDeColon`. `scripts/package-windows.ps1` incluye el runtime de Node para Windows, `.next`, `public`, `prisma`, `scripts` y `node_modules`, además del lanzador `.cmd`.
+No es necesario ejecutar `build` antes: `package:windows` ejecuta la compilación de producción automáticamente y genera `dist\LoteriaMercatDeColon`. `scripts/package-windows.ps1` incluye el runtime de Node para Windows, `.next`, `public`, `prisma`, `scripts` y las dependencias de producción, además del lanzador `.cmd`.
+
+La carpeta `dist\LoteriaMercatDeColon` se puede comprimir y enviar a otro ordenador Windows. En el ordenador de destino:
+
+1. Descomprima la carpeta completa; no ejecute la aplicación desde dentro del archivo ZIP.
+2. Abra `LoteriaMercatDeColon.cmd`.
+3. No necesita instalar Node.js, npm, pnpm ni herramientas de desarrollo.
+
+El paquete está preparado para Windows de 64 bits. Windows puede mostrar una advertencia de seguridad para archivos descargados; desbloquee el archivo o permita su ejecución solo si confía en su procedencia. La base de datos no se guarda dentro del paquete, sino en `%LOCALAPPDATA%\LoteriaMercatDeColon\data`. Para trasladar datos existentes, importe el archivo `.db` desde **Registro → Importar datos**.
 
 Para una distribución comercial puede sustituirse el paquete portable por un instalador MSI o NSIS. El instalador debe:
 
