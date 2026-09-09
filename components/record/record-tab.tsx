@@ -1,6 +1,5 @@
 import { CedidoRecordsTable, ImportDeliveryNotes, ImportedDeliveryNotesTable } from './import-delivery-notes'
 import { ManualEntry } from './manual-entry'
-import { DatabaseSettings } from './database-settings'
 import type { Albaran, Cedido } from '@/lib/record-data'
 
 type Props = {
@@ -16,10 +15,9 @@ export function RecordTab({ albaranes, onManualEntry, onUpdate, onDelete, onImpo
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-6 lg:grid-cols-2">
-        <ImportDeliveryNotes onImported={onImported} />
+        <ImportDeliveryNotes onImported={onImported} onDatabaseImported={onImported} />
         <ManualEntry onCreated={onManualEntry} />
       </div>
-      <DatabaseSettings />
       <ImportedDeliveryNotesTable albaranes={albaranes} onUpdate={onUpdate} onDelete={onDelete} />
       <CedidoRecordsTable cedidos={cedidos} onUpdate={onUpdate} onDelete={onDelete} />
     </div>
