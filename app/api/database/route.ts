@@ -1,12 +1,12 @@
 import { copyFile, mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { prisma } from '@/lib/prisma'
-import { getConfiguredDatabasePath, getDatabasePath } from '@/lib/database-location'
+import { configureDatabase, getConfiguredDatabasePath, getDatabasePath, isDatabaseConfigured } from '@/lib/database-location'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  return Response.json({ path: await getConfiguredDatabasePath() })
+  return Response.json({ path: await getConfiguredDatabasePath(), configured: await isDatabaseConfigured() })
 }
 
 export async function POST(request: Request) {
@@ -29,10 +29,15 @@ export async function POST(request: Request) {
     await prisma.$disconnect()
     await copyFile(temporaryPath, databasePath)
     await unlink(temporaryPath)
-    return Response.json({ path: databasePath, imported: true })
+    await configureDatabase(databasePath)
+    return Response.json({ path: databasePath, imported: true, configured: true })
   }
 
-  const body = await request.json() as { path?: unknown }
+  const body = await request.json() as { path?: unknown; initialize?: boolean }
+  if (body.initialize === true) {
+    await configureDatabase(getDatabasePath())
+    return Response.json({ path: getDatabasePath(), configured: true })
+  }
   if (typeof body.path !== 'string' || !path.isAbsolute(body.path)) {
     return Response.json({ error: 'Indica una ruta absoluta para la base de datos.' }, { status: 400 })
   }
@@ -43,6 +48,6 @@ export async function POST(request: Request) {
   if (sourcePath.toLowerCase() !== destinationPath.toLowerCase()) await copyFile(sourcePath, destinationPath)
   const configDirectory = process.env.LOTERIA_CONFIG_DIR ?? path.join(process.cwd(), 'data')
   await mkdir(configDirectory, { recursive: true })
-  await writeFile(path.join(configDirectory, 'database-location.json'), JSON.stringify({ databasePath: destinationPath }, null, 2), 'utf8')
+  await configureDatabase(destinationPath)
   return Response.json({ path: destinationPath, restartRequired: true })
 }

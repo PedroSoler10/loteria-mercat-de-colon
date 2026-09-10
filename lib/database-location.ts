@@ -20,6 +20,20 @@ export async function getConfiguredDatabasePath() {
   return getDatabasePath()
 }
 
+export async function isDatabaseConfigured() {
+  try {
+    const config = JSON.parse(await readFile(configPath, 'utf8')) as { databasePath?: unknown }
+    return typeof config.databasePath === 'string' && path.isAbsolute(config.databasePath)
+  } catch {
+    return false
+  }
+}
+
+export async function configureDatabase(databasePath: string) {
+  await mkdir(defaultConfigDirectory, { recursive: true })
+  await writeFile(configPath, JSON.stringify({ databasePath: path.resolve(databasePath) }, null, 2), 'utf8')
+}
+
 export async function saveDatabaseCopy(destinationPath: string) {
   const sourcePath = getDatabasePath()
   const resolvedPath = path.resolve(destinationPath)

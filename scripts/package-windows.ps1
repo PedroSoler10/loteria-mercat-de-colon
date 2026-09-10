@@ -81,6 +81,9 @@ Copy-Item (Join-Path $nextEnvPackage.FullName 'node_modules\@next\env') (Join-Pa
 Copy-Item 'public' (Join-Path $appDirectory '.next\standalone\public') -Recurse
 Copy-Item 'scripts' (Join-Path $appDirectory 'scripts') -Recurse
 
+# Nunca distribuir datos de desarrollo dentro del paquete portable.
+Get-ChildItem $OutputDirectory -Recurse -File -Include '*.db', '*.sqlite', '*.sqlite3' | Remove-Item -Force
+
 @'
 @echo off
 set "LOTERIA_DATA_DIR=%LOCALAPPDATA%\LoteriaMercatDeColon\data"

@@ -16,6 +16,8 @@ La distribución final está pensada para Windows y no requiere instalar Node.js
 4. Espere unos segundos. La aplicación iniciará un servidor local y abrirá automáticamente el navegador.
 5. Si el navegador no se abre, visite `http://localhost:3000`.
 
+En una instalación nueva aparecerá primero el asistente **Configurar base de datos**. Seleccione un archivo `.db`, `.sqlite` o `.sqlite3` si ya tiene datos, o pulse **Empezar con una base nueva** para comenzar sin datos. Hasta completar este paso no se mostrará el resto de la aplicación.
+
 Mientras la aplicación esté abierta, no cierre la ventana de consola que se haya iniciado junto al servidor. Para cerrar la aplicación, cierre esa ventana.
 
 Los datos se guardan en:
@@ -24,7 +26,7 @@ Los datos se guardan en:
 %LOCALAPPDATA%\LoteriaMercatDeColon\data
 ```
 
-La base de datos principal es `loteria.db`. No borre esta carpeta al actualizar la aplicación: contiene todos los albaranes, boletos, cesiones y ventas.
+La base de datos principal es `loteria.db`. En una instalación nueva no se incluye ninguna base de datos dentro del paquete. No borre esta carpeta al actualizar la aplicación: contiene todos los albaranes, boletos, cesiones y ventas.
 
 ### Primera instalación desde el repositorio
 

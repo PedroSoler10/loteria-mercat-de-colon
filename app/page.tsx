@@ -6,6 +6,7 @@ import { RecordTab } from '@/components/record/record-tab'
 import { InventoryTab } from '@/components/inventory/inventory-tab'
 import { TpvTab } from '@/components/tpv/tpv-tab'
 import { AnalysisTab } from '@/components/analysis-tab'
+import { DatabaseSetup } from '@/components/database-setup'
 import type { Albaran, Cedido, Ticket } from '@/lib/record-data'
 import type { Sale } from '@/lib/tpv-data'
 
@@ -15,6 +16,7 @@ export default function Page() {
   const [sales, setSales] = useState<Sale[]>([])
   const [cedidos, setCedidos] = useState<Cedido[]>([])
   const [albaranes, setAlbaranes] = useState<Albaran[]>([])
+  const [databaseReady, setDatabaseReady] = useState<boolean | null>(null)
 
   async function refreshData() {
     const [inventoryResponse, salesResponse, cedidosResponse, originsResponse] = await Promise.all([
@@ -48,8 +50,25 @@ export default function Page() {
   }
 
   useEffect(() => {
-    refreshData().catch((error) => console.error(error))
+    fetch('/api/database', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('No se pudo comprobar la base de datos')
+        const result = await response.json() as { configured?: boolean }
+        setDatabaseReady(result.configured === true)
+        if (result.configured === true) await refreshData()
+      })
+      .catch((error) => console.error(error))
   }, [])
+
+  async function completeDatabaseSetup() {
+    setDatabaseReady(true)
+    await refreshData()
+  }
+
+  if (databaseReady !== true) {
+    if (databaseReady === null) return <div className="min-h-screen" />
+    return <DatabaseSetup onReady={completeDatabaseSetup} />
+  }
 
   async function registerSale(ids: string[]) {
     const response = await fetch('/api/sales', {
