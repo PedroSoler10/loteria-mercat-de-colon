@@ -6,30 +6,69 @@ import { RecordTab } from '@/components/record/record-tab'
 import { InventoryTab } from '@/components/inventory/inventory-tab'
 import { TpvTab } from '@/components/tpv/tpv-tab'
 import { AnalysisTab } from '@/components/analysis-tab'
-import type { Albaran, Ticket } from '@/lib/record-data'
+import { DatabaseSetup } from '@/components/database-setup'
+import type { Albaran, Cedido, Ticket } from '@/lib/record-data'
 import type { Sale } from '@/lib/tpv-data'
 
 export default function Page() {
-  const [tab, setTab] = useState<Tab>('Inventario')
+  const [tab, setTab] = useState<Tab>('TPV')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [sales, setSales] = useState<Sale[]>([])
+  const [cedidos, setCedidos] = useState<Cedido[]>([])
   const [albaranes, setAlbaranes] = useState<Albaran[]>([])
+  const [databaseReady, setDatabaseReady] = useState<boolean | null>(null)
 
   async function refreshData() {
-    const [inventoryResponse, salesResponse, originsResponse] = await Promise.all([
+    const [inventoryResponse, salesResponse, cedidosResponse, originsResponse] = await Promise.all([
       fetch('/api/inventory', { cache: 'no-store' }),
       fetch('/api/sales', { cache: 'no-store' }),
+      fetch('/api/cedidos', { cache: 'no-store' }),
       fetch('/api/origins', { cache: 'no-store' }),
     ])
-    if (!inventoryResponse.ok || !salesResponse.ok || !originsResponse.ok) throw new Error('No se pudo cargar la base de datos')
+    const failedResponse = [
+      ['/api/inventory', inventoryResponse] as const,
+      ['/api/sales', salesResponse] as const,
+      ['/api/cedidos', cedidosResponse] as const,
+      ['/api/origins', originsResponse] as const,
+    ].find(([, response]) => !response.ok)
+    if (failedResponse) {
+      const [endpoint, response] = failedResponse
+      let detail = `${response.status} ${response.statusText}`.trim()
+      try {
+        const body = (await response.clone().json()) as { error?: string }
+        if (body.error) detail = body.error
+      } catch {
+        // Keep the HTTP status when the server did not return JSON.
+      }
+      throw new Error(`No se pudo cargar ${endpoint}: ${detail}`)
+    }
     setTickets(await inventoryResponse.json())
     setSales(await salesResponse.json())
+    const cedidos = await cedidosResponse.json()
     setAlbaranes(await originsResponse.json())
+    setCedidos(cedidos)
   }
 
   useEffect(() => {
-    refreshData().catch((error) => console.error(error))
+    fetch('/api/database', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('No se pudo comprobar la base de datos')
+        const result = await response.json() as { configured?: boolean }
+        setDatabaseReady(result.configured === true)
+        if (result.configured === true) await refreshData()
+      })
+      .catch((error) => console.error(error))
   }, [])
+
+  async function completeDatabaseSetup() {
+    setDatabaseReady(true)
+    await refreshData()
+  }
+
+  if (databaseReady !== true) {
+    if (databaseReady === null) return <div className="min-h-screen" />
+    return <DatabaseSetup onReady={completeDatabaseSetup} />
+  }
 
   async function registerSale(ids: string[]) {
     const response = await fetch('/api/sales', {
@@ -108,6 +147,7 @@ export default function Page() {
             onUpdate={updateOrigin}
             onDelete={deleteOrigin}
             onImported={refreshData}
+            cedidos={cedidos}
           />
         )}
         {tab === 'Inventario' && <InventoryTab tickets={tickets} onTicketsChange={setTickets} onSale={registerSale} />}
@@ -123,7 +163,7 @@ export default function Page() {
             onDelete={permanentlyDeleteSale}
           />
         )}
-        {tab === 'Análisis' && <AnalysisTab tickets={tickets} sales={sales} />}
+        {tab === 'Análisis' && <AnalysisTab tickets={tickets} sales={sales} cedidos={cedidos} />}
       </main>
     </div>
   )

@@ -19,6 +19,7 @@ model Sorteo {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   boletos Boleto[]
+  cedidos Cedido[]
   origenes Origen[]
 
   @@unique([tipoJuego, anoCompleto, numeroSorteo])
@@ -42,6 +43,7 @@ model Origen {
 
   sorteo Sorteo? @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
   boletos Boleto[]
+  cedidos Cedido[]
 
   @@index([idSorteo])
   @@map("origenes")
@@ -61,6 +63,7 @@ model Boleto {
   sorteo Sorteo @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
   origen Origen @relation(fields: [idOrigen], references: [idOrigen], onDelete: Restrict)
   venta  Venta?
+  cedidos Cedido[]
 
   @@unique([idSorteo, numeroJugado, serie, fraccion])
   @@index([idSorteo, numeroJugado])
@@ -79,4 +82,26 @@ model Venta {
 
   @@index([estado, fechaHoraVenta])
   @@map("ventas")
+}
+
+model Cedido {
+  idCedido          String   @id @map("id_cedido")
+  idBoleto          String?  @map("id_boleto")
+  idSorteo          String   @map("id_sorteo")
+  idOrigen          String   @map("id_origen")
+  numeroJugado      String   @map("numero_jugado")
+  serie             String
+  fraccion          String
+  fechaHoraCesion   DateTime @default(now()) @map("fecha_hora_cesion")
+  precioCentimos    Int      @default(0) @map("precio_centimos")
+
+  boleto Boleto? @relation(fields: [idBoleto], references: [idBoleto], onDelete: Restrict)
+  sorteo Sorteo @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
+  origen Origen @relation(fields: [idOrigen], references: [idOrigen], onDelete: Restrict)
+
+  @@index([fechaHoraCesion])
+  @@index([idSorteo, numeroJugado, serie, fraccion])
+  @@index([idOrigen])
+  @@unique([idOrigen, idSorteo, numeroJugado, serie, fraccion])
+  @@map("cedidos")
 }

@@ -38,6 +38,9 @@ function Counts({ list, strong }: { list: Ticket[]; strong?: boolean }) {
     <>
       <TableCell className={cn('text-right font-mono tabular-nums', strong && 'text-base')}>{c.recibidos}</TableCell>
       <TableCell className={cn('text-right font-mono tabular-nums text-muted-foreground', strong && 'text-base')}>
+        {c.cedidos}
+      </TableCell>
+      <TableCell className={cn('text-right font-mono tabular-nums text-muted-foreground', strong && 'text-base')}>
         {c.vendidos}
       </TableCell>
       <TableCell className="text-right">
@@ -59,7 +62,7 @@ function Counts({ list, strong }: { list: Ticket[]; strong?: boolean }) {
   )
 }
 
-const COLS = 7
+const COLS = 8
 
 export function InventoryStockTable({ tickets, autoExpand, onSell }: Props) {
   const numeros = useMemo(() => groupTickets(tickets), [tickets])
@@ -91,7 +94,7 @@ export function InventoryStockTable({ tickets, autoExpand, onSell }: Props) {
 
   /** Vende las N primeras fracciones disponibles de una lista. */
   function sellFrom(list: Ticket[], qty: number) {
-    const ids = list.filter((t) => !t.vendido).slice(0, qty).map(ticketId)
+    const ids = list.filter((t) => !t.vendido && !t.cedido).slice(0, qty).map(ticketId)
     if (ids.length > 0) onSell(ids)
   }
 
@@ -131,6 +134,7 @@ export function InventoryStockTable({ tickets, autoExpand, onSell }: Props) {
               <TableHead>Serie</TableHead>
               <TableHead>Fracción</TableHead>
               <TableHead className="text-right">Recibidos</TableHead>
+              <TableHead className="text-right">Cedidos</TableHead>
               <TableHead className="text-right">Vendidos</TableHead>
               <TableHead className="text-right">Disponibles</TableHead>
               <TableHead className="pr-5 text-right">Acción (Venta)</TableHead>
@@ -148,7 +152,7 @@ export function InventoryStockTable({ tickets, autoExpand, onSell }: Props) {
               const numOpen = openNumeros.has(n.numero)
               const all = allTickets(n)
               const first = all[0]
-              const avail = all.filter((t) => !t.vendido).length
+              const avail = all.filter((t) => !t.vendido && !t.cedido).length
               return (
                 <Fragment key={n.numero}>
                   {/* Nivel 1: número */}
@@ -186,7 +190,7 @@ export function InventoryStockTable({ tickets, autoExpand, onSell }: Props) {
                     n.series.map((s) => {
                       const key = `${n.numero}/${s.serie}`
                       const serOpen = openSeries.has(key)
-                      const sAvail = s.fracciones.filter((t) => !t.vendido).length
+                      const sAvail = s.fracciones.filter((t) => !t.vendido && !t.cedido).length
                       return (
                         <Fragment key={key}>
                           <TableRow

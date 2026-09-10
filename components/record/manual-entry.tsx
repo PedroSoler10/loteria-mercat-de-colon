@@ -54,6 +54,7 @@ export function ManualEntry({ onCreated }: Props) {
   const [serie, setSerie] = useState('')
   const [serieHasta, setSerieHasta] = useState('')
   const [fraccion, setFraccion] = useState('')
+  const [digitosControl, setDigitosControl] = useState('0000')
   const [isFullSeries, setIsFullSeries] = useState(false)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -68,6 +69,7 @@ export function ManualEntry({ onCreated }: Props) {
       setSerie(barcode.serie)
       setSerieHasta(barcode.serie)
       setFraccion(barcode.fraccion)
+      setDigitosControl(barcode.digitosControl)
       setIsFullSeries(false)
       setFeedback(null)
     } catch {
@@ -81,6 +83,7 @@ export function ManualEntry({ onCreated }: Props) {
     setSerie('')
     setSerieHasta('')
     setFraccion('')
+    setDigitosControl('0000')
   }
 
   async function submit() {
@@ -90,7 +93,7 @@ export function ManualEntry({ onCreated }: Props) {
       const response = await fetch('/api/manual-entry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scan, tipoJuego, sorteo, anio, numero, serie, serieHasta, fraccion, isFullSeries }),
+        body: JSON.stringify({ scan, tipoJuego, sorteo, anio, numero, serie, serieHasta, fraccion, digitosControl, isFullSeries }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No se pudo dar de alta')
@@ -219,6 +222,14 @@ export function ManualEntry({ onCreated }: Props) {
               maxLength={2}
             />
           )}
+            <NumericField
+              id="digitos-control"
+              label="Dígitos de control"
+              hint="0000 si no se conocen"
+              value={digitosControl}
+              onChange={setDigitosControl}
+              maxLength={4}
+            />
         </div>
 
         <div className="mt-auto flex gap-2">

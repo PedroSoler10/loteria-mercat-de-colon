@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
+import { temporaryOriginId } from '@/lib/origin-id'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +13,7 @@ type ManualEntryRequest = {
   serie?: string
   serieHasta?: string
   fraccion?: string
+  digitosControl?: string
   isFullSeries?: boolean
 }
 
@@ -23,18 +25,6 @@ function asNumber(value: string | undefined, name: string) {
 
 function pad(value: string, length: number) {
   return value.padStart(length, '0')
-}
-
-function originId(date: Date, prefix: 'MAN' | 'SCAN') {
-  const parts = [
-    date.getFullYear(),
-    pad(String(date.getMonth() + 1), 2),
-    pad(String(date.getDate()), 2),
-    pad(String(date.getHours()), 2),
-    pad(String(date.getMinutes()), 2),
-    pad(String(date.getSeconds()), 2),
-  ]
-  return `${prefix}_${parts.join('-')}`
 }
 
 export async function POST(request: Request) {
@@ -64,6 +54,10 @@ export async function POST(request: Request) {
   if (!body.isFullSeries && !/^\d{1,2}$/.test(fraccionValue ?? '')) {
     return Response.json({ error: 'La fracción debe tener entre 1 y 2 cifras' }, { status: 400 })
   }
+  const digitosControl = scanned?.digitosControl ?? pad(body.digitosControl?.trim() || '0000', 4)
+  if (!/^\d{4}$/.test(digitosControl)) {
+    return Response.json({ error: 'Los dígitos de control deben tener 4 cifras' }, { status: 400 })
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -79,29 +73,34 @@ export async function POST(request: Request) {
         : [pad(fraccionValue!, 2)]
       const data = series.flatMap((serie) => fracciones.map((fraccion) => {
         const idBoleto = `${sorteo.idSorteo}-${numeroJugado}-${serie}-${fraccion}`
-        const codigoBarrasRaw = rawScan || `${sorteo.idSorteo}${fraccion}${serie}${numeroJugado}`
+        const codigoBarrasRaw = rawScan || `${tipoJuego}${String(numeroSorteo).padStart(3, '0')}${String(anoCompleto).slice(-1)}${fraccion}${serie}0${numeroJugado}${digitosControl}`
         return {
           idBoleto,
           idSorteo: sorteo.idSorteo,
           numeroJugado,
           serie,
           fraccion,
-          digitosControl: scanned?.digitosControl ?? '0000',
+          digitosControl,
           codigoBarrasRaw,
         }
       }))
 
-      const duplicates = await tx.boleto.findMany({
-        where: {
-          OR: data.map((boleto) => ({
-            idSorteo: boleto.idSorteo,
-            numeroJugado: boleto.numeroJugado,
-            serie: boleto.serie,
-            fraccion: boleto.fraccion,
-          })),
-        },
-        include: { origen: true },
-      })
+      const duplicates = []
+      for (let offset = 0; offset < data.length; offset += 500) {
+        const batch = data.slice(offset, offset + 500)
+        const batchDuplicates = await tx.boleto.findMany({
+          where: {
+            OR: batch.map((boleto) => ({
+              idSorteo: boleto.idSorteo,
+              numeroJugado: boleto.numeroJugado,
+              serie: boleto.serie,
+              fraccion: boleto.fraccion,
+            })),
+          },
+          include: { origen: true },
+        })
+        duplicates.push(...batchDuplicates)
+      }
       const staleOriginIds = Array.from(new Set(
         duplicates.filter((boleto) => boleto.origen.deletedAt).map((boleto) => boleto.idOrigen),
       ))
@@ -127,10 +126,10 @@ export async function POST(request: Request) {
 
       let originDate = new Date()
       const originPrefix = rawScan ? 'SCAN' : 'MAN'
-      let idOrigen = originId(originDate, originPrefix)
+      let idOrigen = temporaryOriginId(originPrefix, originDate)
       while (await tx.origen.findUnique({ where: { idOrigen } })) {
         originDate = new Date(originDate.getTime() + 1000)
-        idOrigen = originId(originDate, originPrefix)
+        idOrigen = temporaryOriginId(originPrefix, originDate)
       }
       const origen = await tx.origen.create({
         data: {

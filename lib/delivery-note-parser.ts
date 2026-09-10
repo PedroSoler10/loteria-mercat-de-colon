@@ -46,6 +46,7 @@ function detectName(text: string) {
     'Series Completas',
     'Venta por Terminal',
     'Abonos Fijos',
+    'Cesión de Consignación',
     'Distribución Libre',
     'Pedidos sobre Reserva No Fabricada',
     'Recepción del Cambio Consignación',
@@ -53,14 +54,29 @@ function detectName(text: string) {
   return names.find((name) => text.includes(name)) ?? 'Albarán SELAE'
 }
 
+const originTypes = [
+  'Series Completas',
+  'Venta por Terminal',
+  'Abonos Fijos',
+  'Cesión de Consignación',
+  'Distribución Libre',
+  'Pedidos sobre Reserva No Fabricada',
+  'Recepción del Cambio Consignación',
+]
+
 function detectOriginType(items: PdfTextItem[], fallback: string) {
   // Se exige separación entre letras para no confundir el rótulo «Nº albarán»
   // con el título tipográfico «A L B A R Á N».
   const title = items.find((item) => /A\s+L\s+B\s+A\s+R\s+(?:Á|A)\s+N/i.test(item.text))
   if (title) {
-    const type = items
+    const nearbyItems = items
       .filter((item) => item.page === title.page && item.y < title.y - 2 && item.y >= title.y - 35 && item.x < 400 && item.text.trim().length > 2)
-    .sort((a, b) => b.y - a.y || a.x - b.x)[0]
+      .sort((a, b) => b.y - a.y || a.x - b.x)
+    const knownType = nearbyItems
+      .map((item) => item.text.replace(/\s+/g, ' ').trim())
+      .find((text) => originTypes.includes(text))
+    if (knownType) return knownType
+    const type = nearbyItems[0]
     if (type) return type.text.trim()
   }
 

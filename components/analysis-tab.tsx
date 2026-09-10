@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react'
 import { InventoryMetrics } from '@/components/inventory/inventory-metrics'
 import { CashReconciliationPanel } from '@/components/tpv/cash-reconciliation-panel'
-import { countStock, type Ticket } from '@/lib/record-data'
+import { countStock, type Cedido, type Ticket } from '@/lib/record-data'
 import type { Periodo, Sale } from '@/lib/tpv-data'
 
 type Props = {
   tickets: Ticket[]
   sales: Sale[]
+  cedidos: Cedido[]
 }
 
 type DailySales = {
@@ -17,11 +18,17 @@ type DailySales = {
   count: number
 }
 
-function getDailySales(sales: Sale[]): DailySales[] {
+type ChartGrouping = 'day' | 'week' | 'month'
+
+function getDailySales(sales: Sale[], grouping: ChartGrouping): DailySales[] {
   const grouped = new Map<string, number>()
   for (const sale of sales) {
     const date = new Date(sale.fecha)
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    date.setHours(0, 0, 0, 0)
+    if (grouping === 'week') date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+    const key = grouping === 'month'
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     grouped.set(key, (grouped.get(key) ?? 0) + 1)
   }
 
@@ -29,13 +36,14 @@ function getDailySales(sales: Sale[]): DailySales[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, count]) => ({
       date,
-      label: new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+      label: new Date(`${date}${grouping === 'month' ? '-01' : ''}T12:00:00`).toLocaleDateString('es-ES', grouping === 'month' ? { month: 'short', year: 'numeric' } : grouping === 'week' ? { day: '2-digit', month: 'short' } : { day: '2-digit', month: 'short' }),
       count,
     }))
 }
 
-export function AnalysisTab({ tickets, sales }: Props) {
+export function AnalysisTab({ tickets, sales, cedidos }: Props) {
   const [periodo, setPeriodo] = useState<Periodo>('hoy')
+  const [chartGrouping, setChartGrouping] = useState<ChartGrouping>('day')
   const periodSales = useMemo(() => {
     const now = new Date()
     const from = new Date(now)
@@ -49,12 +57,23 @@ export function AnalysisTab({ tickets, sales }: Props) {
     return sales.filter((sale) => sale.estado === 'activa' && new Date(sale.fecha).getTime() >= from.getTime())
   }, [sales, periodo])
   const activeSales = useMemo(() => sales.filter((sale) => sale.estado === 'activa'), [sales])
-  const dailySales = useMemo(() => getDailySales(activeSales), [activeSales])
+  const dailySales = useMemo(() => {
+    const grouped = getDailySales(activeSales, chartGrouping)
+    if (chartGrouping !== 'day' || grouped.length === 0) return grouped
+    const first = new Date(`${grouped[0].date}T12:00:00`)
+    const last = new Date(`${grouped[grouped.length - 1].date}T12:00:00`)
+    const complete: DailySales[] = []
+    for (const cursor = new Date(first); cursor <= last; cursor.setDate(cursor.getDate() + 1)) {
+      const date = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
+      complete.push({ date, label: cursor.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }), count: grouped.find((item) => item.date === date)?.count ?? 0 })
+    }
+    return complete
+  }, [activeSales, chartGrouping])
   const maxCount = Math.max(...dailySales.map((day) => day.count), 1)
 
   return (
     <div className="flex flex-col gap-5">
-      <InventoryMetrics counts={countStock(tickets)} />
+      <InventoryMetrics counts={{ ...countStock(tickets), cedidos: cedidos.length }} />
       <CashReconciliationPanel
         periodo={periodo}
         onPeriodoChange={setPeriodo}
@@ -66,12 +85,15 @@ export function AnalysisTab({ tickets, sales }: Props) {
       <section aria-labelledby="daily-sales-title" className="rounded-lg border bg-card p-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="daily-sales-title" className="text-lg font-semibold">Fracciones vendidas por día</h2>
+            <h2 id="daily-sales-title" className="text-lg font-semibold">Fracciones vendidas por {chartGrouping === 'day' ? 'día' : chartGrouping === 'week' ? 'semana' : 'mes'}</h2>
             <p className="text-sm text-muted-foreground">Cada fracción vendida cuenta como una operación.</p>
           </div>
-          <span className="font-mono text-sm tabular-nums text-muted-foreground">
-            {activeSales.length} fracciones activas en total
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border bg-muted p-1">
+              {(['day', 'week', 'month'] as ChartGrouping[]).map((value) => <button key={value} type="button" className={`rounded px-3 py-1 text-sm ${chartGrouping === value ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground'}`} onClick={() => setChartGrouping(value)}>{value === 'day' ? 'Días' : value === 'week' ? 'Semanas' : 'Meses'}</button>)}
+            </div>
+            <span className="font-mono text-sm tabular-nums text-muted-foreground">{activeSales.length} fracciones activas en total</span>
+          </div>
         </div>
 
         {dailySales.length === 0 ? (

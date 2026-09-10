@@ -1,111 +1,145 @@
 # Lotería Mercat de Colón
 
-Aplicación web de escritorio para gestionar el inventario y las ventas de una administración de lotería.
+Aplicación web local para gestionar albaranes, inventario de boletos, cesiones, ventas y análisis de una administración de lotería.
 
-## Estado actual
+Este documento está organizado para que una persona pueda empezar a utilizar la aplicación sin conocimientos técnicos. La información de desarrollo y arquitectura aparece al final.
 
-La aplicación funciona con datos de demostración en memoria. No hay todavía una base de datos, una API backend, autenticación ni persistencia entre recargas.
+## 1. Instalación para usuarios
 
-Los cambios realizados durante una sesión se mantienen mientras la aplicación permanece abierta. Al recargar, se recuperan los datos iniciales de demostración.
+### Opción recomendada: paquete portable de Windows
 
-## Funcionalidades
+La distribución final está pensada para Windows y no requiere instalar Node.js, pnpm, Corepack ni ningún programa de desarrollo.
 
-- Gestión de boletos por número, serie y fracción.
-- Consulta de boletos recibidos, vendidos y disponibles.
-- Búsqueda de números por terminación o coincidencia parcial.
-- Filtro de boletos disponibles.
-- Venta manual desde la tabla de inventario.
-- Venta rápida mediante lector de códigos o teclado.
-- Selección del modo de venta: fracción o serie completa.
-- Historial de ventas.
-- Corrección de número, serie, fracción, fecha y precio de una venta.
-- Anulación de ventas y devolución del boleto al stock.
-- Métricas de inventario.
-- Arqueo de caja por día, semana o mes.
-- Gráfica de fracciones vendidas por día.
-- Interfaz para seleccionar y arrastrar albaranes PDF.
-- Formulario de alta manual de boletos.
+1. Descargue y descomprima el paquete de la aplicación en una carpeta local.
+2. Abra la carpeta descomprimida.
+3. Haga doble clic en `LoteriaMercatDeColon.cmd`.
+4. Espere unos segundos. La aplicación iniciará un servidor local y abrirá automáticamente el navegador.
+5. Si el navegador no se abre, visite `http://localhost:3000`.
 
-La interfaz visible está en español. Los nombres técnicos de carpetas, archivos y componentes están en inglés.
+En una instalación nueva aparecerá primero el asistente **Configurar base de datos**. Seleccione un archivo `.db`, `.sqlite` o `.sqlite3` si ya tiene datos, o pulse **Empezar con una base nueva** para comenzar sin datos. Hasta completar este paso no se mostrará el resto de la aplicación.
 
-## Tecnologías
+Mientras la aplicación esté abierta, no cierre la ventana de consola que se haya iniciado junto al servidor. Para cerrar la aplicación, cierre esa ventana.
 
-- Next.js 16.3.3
-- React 19
-- TypeScript 5.7
-- Tailwind CSS 4
-- Lucide React
-- Base UI
-- Vercel Analytics
-- pnpm mediante Corepack
+Los datos se guardan en:
 
-## Requisitos
+```text
+%LOCALAPPDATA%\LoteriaMercatDeColon\data
+```
 
-- Node.js
-- Corepack habilitado
+La base de datos principal es `loteria.db`. En una instalación nueva no se incluye ninguna base de datos dentro del paquete. No borre esta carpeta al actualizar la aplicación: contiene todos los albaranes, boletos, cesiones y ventas.
 
-## Instalación
+### Primera instalación desde el repositorio
 
-Desde la carpeta raíz del proyecto:
+Este procedimiento está destinado a quien prepara la aplicación, no al usuario final:
+
+```powershell
+corepack pnpm install
+npm run build
+npm run package:windows
+```
+
+El paquete se genera en `dist\LoteriaMercatDeColon`. Incluye:
+
+- La compilación optimizada de Next.js.
+- El runtime de Node.js para Windows.
+- Prisma y las migraciones de la base de datos.
+- Un archivo `.cmd` para iniciar la aplicación con doble clic.
+
+El proyecto utiliza pnpm y conserva `pnpm-lock.yaml` como archivo de bloqueo oficial. No ejecute `npm install` en una carpeta donde ya exista `node_modules` creada por pnpm: npm 11 puede fallar al intentar deduplicar los enlaces internos de pnpm con el error `Cannot read properties of null (reading 'matches')`. Use siempre:
 
 ```powershell
 corepack pnpm install
 ```
 
-Si pnpm no está disponible, también puede utilizarse `npm install`. El repositorio mantiene `pnpm-lock.yaml` como archivo de bloqueo principal.
+Si ya se ejecutó `npm install` y dejó la instalación en un estado inconsistente, cierre los procesos de desarrollo y elimine únicamente la carpeta `node_modules` del proyecto antes de volver a ejecutar `corepack pnpm install`. No elimine la carpeta `data`.
 
-## Desarrollo
+### Actualizar la aplicación
 
-```powershell
-corepack pnpm dev
-```
+1. Cierre la aplicación.
+2. Haga una copia de seguridad de `loteria.db`.
+3. Sustituya los archivos de la aplicación por los de la nueva versión.
+4. No sustituya ni elimine `%LOCALAPPDATA%\LoteriaMercatDeColon\data`.
+5. Vuelva a ejecutar `LoteriaMercatDeColon.cmd`.
 
-También puede utilizarse:
+Las migraciones pendientes se aplican automáticamente al iniciar una versión nueva.
 
-```powershell
-npm run dev
-```
+### Copia de seguridad y restauración
 
-Después abre [http://localhost:3000](http://localhost:3000) en el navegador.
+La pestaña **Registro** incluye un bloque único de **Importar datos**, desde el que puede:
 
-## Compilación y producción
+- Arrastrar o seleccionar PDF de albaranes y archivos `.db`, `.sqlite` o `.sqlite3`. La aplicación envía cada formato automáticamente al importador correcto.
+- Elegir una ubicación en el explorador para guardar una copia de la base de datos cuando no tenga ningún archivo que importar.
+- Descargar una copia de seguridad desde la propia aplicación.
 
-Para crear una compilación optimizada:
+Para hacer una copia de seguridad manual:
 
-```powershell
-corepack pnpm build
-```
+1. Cierre la aplicación.
+2. Abra el Explorador de archivos y escriba `%LOCALAPPDATA%\LoteriaMercatDeColon\data` en la barra de direcciones.
+3. Copie `loteria.db` a otra ubicación, preferiblemente a un disco externo o almacenamiento seguro.
 
-Para iniciar la versión compilada:
+Para restaurar una copia desde la aplicación, seleccione el archivo en **Registro → Base de datos → Importar archivo** y recargue la página. También puede hacerlo manualmente:
 
-```powershell
-corepack pnpm start
-```
+1. Cierre la aplicación.
+2. Cambie el nombre de la base de datos actual, por ejemplo a `loteria-antes-de-restaurar.db`.
+3. Copie la copia de seguridad dentro de la carpeta `data`.
+4. Compruebe que el archivo restaurado se llama exactamente `loteria.db`.
+5. Inicie de nuevo la aplicación.
 
-Equivalentes con npm:
+### Problemas frecuentes
 
-```powershell
-npm run build
-npm run start
-```
+**El navegador indica que no se puede conectar**
 
-## Navegación
+Compruebe que la ventana de la aplicación sigue abierta y visite `http://localhost:3000`. Si el puerto está ocupado por otra aplicación, cierre esa aplicación y vuelva a iniciar Lotería Mercat de Colón.
 
-La aplicación utiliza una única página y cambia de vista mediante estado de React. No existe una URL independiente para cada pestaña.
+**La aplicación no conserva los datos**
 
-Las pestañas son:
+Compruebe que está iniciando siempre la aplicación con `LoteriaMercatDeColon.cmd` y que no ha eliminado la carpeta `%LOCALAPPDATA%\LoteriaMercatDeColon\data`.
 
-### Registro
+**La aplicación no se inicia después de una actualización**
 
-Implementada en `components/record/record-tab.tsx`.
+Restaure la copia de seguridad de `loteria.db`, conserve la carpeta de datos y contacte con la persona responsable de la instalación. No elimine la base de datos como primera medida.
 
-Incluye la interfaz de importación de albaranes PDF y el formulario de alta manual. Actualmente, la importación no analiza el contenido de los PDF y el alta manual todavía no incorpora nuevos boletos al inventario global.
+## 2. Tutorial de uso
 
-### Inventario
+Al iniciar la aplicación se abre la pestaña **TPV**. La navegación principal está en la parte superior.
 
-Implementada en `components/inventory/inventory-tab.tsx`.
+### 2.1. Registrar albaranes y boletos
 
-Muestra un buscador y una tabla jerárquica organizada así:
+Abra la pestaña **Registro** para cargar la información recibida.
+
+#### Importar un albarán PDF
+
+1. Abra **Registro**.
+2. Seleccione el archivo PDF del albarán o arrástrelo a la zona de importación.
+3. Espere a que termine el análisis.
+4. Compruebe el sorteo, el identificador del albarán, el tipo de origen y el número de fracciones importadas.
+5. Consulte la tabla de **Importaciones registradas**.
+
+La aplicación evita duplicar un albarán ya cargado. Si se vuelve a cargar el mismo documento, recupera o actualiza el registro existente cuando corresponde.
+
+Las cesiones de consignación aparecen en la tabla **Cedidos**, separadas de las importaciones recibidas. Una cesión puede quedar registrada aunque el boleto todavía no exista en los recibidos.
+
+#### Alta manual o mediante lector
+
+Use el formulario de alta manual cuando un boleto no esté incluido en un albarán:
+
+1. Introduzca el sorteo, número, serie y fracción.
+2. Introduzca los dígitos de control si los conoce; si no, se utiliza `0000`.
+3. Para una lectura con pistola, coloque el cursor en el campo correspondiente y escanee el código.
+4. Guarde el alta.
+
+Las altas manuales y las lecturas sin albarán reciben un origen provisional. Si posteriormente se importa un albarán con los mismos datos, la aplicación puede asociar el boleto al albarán definitivo.
+
+En las tablas de Registro puede:
+
+- Expandir y contraer sorteos, cargas, números, series y fracciones.
+- Ordenar visualmente las cargas por identificador y después por número.
+- Editar los datos de una carga.
+- Eliminar una carga mediante la columna **Acciones**.
+
+### 2.2. Consultar inventario
+
+Abra **Inventario** para consultar el stock organizado por:
 
 ```text
 Número
@@ -113,150 +147,207 @@ Número
     Fracción
 ```
 
-La tabla muestra recibidos, vendidos y disponibles. También permite expandir y contraer niveles y vender cantidades disponibles.
+La tabla distingue entre:
 
-### TPV
+- **Recibidos**: fracciones registradas en albaranes o altas manuales.
+- **Cedidos**: fracciones entregadas a otra administración.
+- **Vendidos**: fracciones con una venta activa.
+- **Disponibles**: recibidos menos cedidos menos vendidos.
 
-Implementada en `components/tpv/tpv-tab.tsx`.
+Utilice el buscador para localizar un número, serie o fracción. Puede expandir los niveles de la tabla y vender desde las fracciones disponibles.
 
-Incluye una barra de venta rápida, el historial de operaciones y las acciones para corregir o anular ventas.
+### 2.3. Registrar ventas en el TPV
 
-La venta rápida tiene dos modos:
+En **TPV** puede vender mediante búsqueda manual o lector de códigos:
 
-- **Fracción**: vende un boleto unitario.
-- **Serie**: vende todas las fracciones disponibles de una serie.
+1. Introduzca el código de barras o los datos del boleto.
+2. Seleccione el boleto encontrado.
+3. Elija vender una fracción o la serie completa cuando esté disponible.
+4. Confirme la venta.
 
-Admite identificadores separados por `/`, como `04521/002/3`, y códigos numéricos concatenados, como `045210023`.
-
-### Análisis
-
-Implementada en `components/analysis-tab.tsx`.
-
-Muestra, en este orden:
-
-1. Métricas globales de inventario.
-2. Arqueo de caja.
-3. Gráfica de fracciones vendidas por día.
-
-## Estructura
+El historial transaccional muestra todas las ventas, no solo las del día. Las ventas se agrupan jerárquicamente por:
 
 ```text
-app/
-  layout.tsx          Metadatos, fuentes, idioma y configuración global
-  page.tsx            Estado principal y composición de las pestañas
-  globals.css         Estilos globales y variables de diseño
-
-components/
-  app-header.tsx      Cabecera y navegación
-  analysis-tab.tsx    Métricas, arqueo y análisis diario
-  inventory/          Buscador, stock y venta desde inventario
-  record/             Registro, albaranes y alta manual
-  tpv/                Venta rápida, historial y arqueo
-  ui/                 Componentes visuales reutilizables
-
-lib/
-  record-data.ts      Tipos, boletos, albaranes y operaciones de stock
-  tpv-data.ts         Tipos, ventas, periodos y datos del historial
-  utils.ts             Utilidades comunes
-
-public/               Recursos estáticos
+Mes
+  Semana
+    Día
+      Venta
 ```
 
-## Componentes importantes
+Cada nivel se puede expandir o contraer. También existen los botones **Expandir todo** y **Contraer todo**.
 
-### `components/inventory/`
+Desde cada venta puede:
 
-- `inventory-tab.tsx`: composición de Inventario.
-- `inventory-search.tsx`: buscador y filtros.
-- `inventory-stock-table.tsx`: tabla jerárquica y acciones de venta.
-- `inventory-metrics.tsx`: tarjetas de recibidos, disponibles y vendidos.
-- `sell-control.tsx`: controles para vender cantidades.
-- `inventory-tree-table.tsx`: tabla anterior conservada, no renderizada actualmente.
+- Editar fecha, precio, número, serie o fracción.
+- Anular una venta activa.
+- Restaurar una venta anulada.
+- Eliminar definitivamente una venta anulada.
 
-### `components/record/`
+Las ventas importadas desde un archivo de texto se pueden cargar con el proceso preparado para ello. El archivo debe contener una cabecera `Código Fecha Hora` y una venta por línea.
 
-- `record-tab.tsx`: composición de Registro.
-- `import-delivery-notes.tsx`: interfaz de importación de albaranes.
-- `manual-entry.tsx`: formulario de alta manual.
-- `record-tree-table.tsx`: tabla conservada para posible reutilización.
+### 2.4. Consultar análisis y caja
 
-### `components/tpv/`
+Abra **Análisis** para consultar:
 
-- `tpv-tab.tsx`: composición de TPV.
-- `tpv-sale-search.tsx`: buscador y venta automática por código.
-- `tpv-table.tsx`: historial de ventas.
-- `edit-sale-dialog.tsx`: corrección de ventas.
-- `cash-reconciliation-panel.tsx`: panel de arqueo reutilizado en Análisis.
+- Fracciones recibidas, cedidas, vendidas y disponibles.
+- Porcentaje de fracciones disponibles frente a recibidas.
+- Arqueo de caja.
+- Ingresos y número de operaciones por día, semana o mes.
+- Gráfica de fracciones vendidas.
 
-## Datos y estado
+En la gráfica puede cambiar entre **Días**, **Semanas** y **Meses**. En la vista diaria también aparecen los días sin ventas entre la primera y la última fecha registrada, con valor cero.
 
-El estado global vive en `app/page.tsx` y contiene:
+### 2.5. Recomendaciones de uso
 
-- `tickets`: boletos disponibles en el inventario.
-- `sales`: ventas registradas.
+- Haga una copia de seguridad al final de cada jornada o antes de importar muchos documentos.
+- No cierre la aplicación mientras se está importando un PDF o registrando una venta.
+- Compruebe el número de fracciones después de cargar un albarán.
+- No borre manualmente la base de datos para resolver un problema sin conservar antes una copia.
 
-El inventario está definido en `lib/record-data.ts`. Cada boleto contiene número, serie, fracción, albarán, sorteo, año, fecha de registro y estado de venta.
+## 3. Descripción técnica del proyecto
 
-El identificador de un boleto utiliza el formato:
+### Tecnologías
+
+- Next.js `16.3.3`.
+- React `19`.
+- TypeScript `5.7`.
+- Tailwind CSS `4`.
+- Prisma `6.19`.
+- SQLite.
+- pnpm mediante Corepack para desarrollo.
+- PDF.js para analizar albaranes.
+- Base UI y Lucide React para la interfaz.
+
+### Arquitectura
+
+La aplicación es una aplicación Next.js con una página principal y API Route Handlers:
 
 ```text
-numero/serie/fraccion
+app/page.tsx                 Estado y navegación principal
+app/api/inventory            Inventario calculado
+app/api/sales                Ventas y operaciones del TPV
+app/api/cedidos              Cesiones
+app/api/delivery-notes       Importación de albaranes PDF
+app/api/manual-entry         Altas manuales y escaneadas
+app/api/origins              Cargas y albaranes
+components/                  Interfaz React
+lib/                         Tipos y lógica compartida
+prisma/                      Schema y migraciones SQLite
+scripts/                     Arranque, importadores y empaquetado
 ```
 
-Ejemplo:
+El estado de la interfaz se coordina en `app/page.tsx`, que carga inventario, ventas, cedidos y orígenes desde la API y actualiza las vistas después de cada operación.
+
+### Modelo de datos
+
+Prisma define principalmente:
+
+- `Sorteo`: datos del sorteo y precio unitario.
+- `Origen`: albarán, alta manual o origen provisional.
+- `Boleto`: número, serie, fracción, dígitos de control y código de barras.
+- `Venta`: venta activa o anulada.
+- `Cedido`: fracción cedida y su relación opcional con un boleto recibido.
+
+El stock disponible se calcula como:
 
 ```text
-04521/002/3
+disponibles = recibidos - cedidos - vendidos
 ```
 
-Las funciones principales del inventario son:
+Las migraciones están en `prisma/migrations`. No deben modificarse ni eliminarse las migraciones ya aplicadas; para cambiar el esquema se debe crear una migración nueva.
 
-- `ticketId`: genera el identificador de un boleto.
-- `countStock`: calcula recibidos, vendidos y disponibles.
-- `groupTickets`: agrupa los boletos por número y serie.
+### Arranque y persistencia
 
-Las ventas están definidas en `lib/tpv-data.ts`. Cada venta contiene identificador, fecha, número, serie, fracción, datos del sorteo y precio. El precio estándar de demostración, definido en `PRECIO_DECIMO`, es de 20 euros.
+Para desarrollo:
 
-## Flujo de venta
+```powershell
+corepack pnpm install
+corepack pnpm dev
+```
 
-Al registrar una venta:
+El script de desarrollo prepara la base de datos y ejecuta las migraciones antes de iniciar Next.js.
 
-1. Se seleccionan uno o varios boletos.
-2. Cada boleto se convierte en una venta.
-3. Las ventas se añaden al historial.
-4. Los boletos se marcan como vendidos.
-5. Las métricas, el arqueo y la gráfica reciben el nuevo estado.
+Para producción:
 
-Al corregir una venta, se valida que el nuevo boleto exista y no esté vendido por otra operación. El boleto anterior vuelve a estar disponible y el nuevo queda marcado como vendido.
+```powershell
+corepack pnpm build
+corepack pnpm start
+```
 
-Al anular una venta, se elimina del historial y el boleto correspondiente vuelve a estar disponible.
+Para iniciar una instalación local y abrir el navegador automáticamente:
 
-## Estilos y accesibilidad
+```powershell
+corepack pnpm build
+corepack pnpm local:start
+```
 
-Los estilos globales están en `app/globals.css`. La aplicación utiliza tema claro, fuentes Geist y Geist Mono, azul como color principal y amarillo como color de énfasis.
+`next.config.mjs` utiliza `output: 'standalone'` para generar una compilación autocontenida. `scripts/start-local.cjs` aplica las migraciones, inicia el servidor standalone y abre `http://localhost:3000`.
 
-También utiliza roles ARIA, etiquetas accesibles, estados de foco y mensajes dinámicos para las acciones principales.
+La ubicación de datos puede cambiarse con `LOTERIA_DATA_DIR`. Si no se especifica, la instalación local utiliza:
 
-El idioma del documento HTML es español mediante `lang="es"`.
+```text
+%LOCALAPPDATA%\LoteriaMercatDeColon\data
+```
 
-## Configuración de Next.js
+### Empaquetado para Windows
 
-La configuración está en `next.config.mjs`.
+El script:
 
-Actualmente:
+```powershell
+corepack pnpm package:windows
+```
 
-- `ignoreBuildErrors` está activado para el build de Next.js.
-- Las imágenes están configuradas como no optimizadas.
+No es necesario ejecutar `build` antes: `package:windows` ejecuta la compilación de producción automáticamente y genera `dist\LoteriaMercatDeColon`. `scripts/package-windows.ps1` incluye el runtime de Node para Windows, `.next`, `public`, `prisma`, `scripts` y las dependencias de producción, además del lanzador `.cmd`.
 
-Los metadatos, fuentes, iconos y el idioma global se configuran en `app/layout.tsx`. Vercel Analytics solo se renderiza en producción.
+La carpeta `dist\LoteriaMercatDeColon` se puede comprimir y enviar a otro ordenador Windows. En el ordenador de destino:
 
-## Limitaciones conocidas
+1. Descomprima la carpeta completa; no ejecute la aplicación desde dentro del archivo ZIP.
+2. Abra `LoteriaMercatDeColon.cmd`.
+3. No necesita instalar Node.js, npm, pnpm ni herramientas de desarrollo.
 
-- Los datos no son persistentes.
-- No existe backend ni base de datos.
-- No hay autenticación ni gestión de usuarios.
-- La importación PDF todavía no extrae información del archivo.
-- El alta manual todavía no actualiza el inventario global.
-- El lector de códigos depende de que el dispositivo escriba en el campo enfocado.
-- La aplicación utiliza un único sorteo de demostración.
-- Se recomienda ejecutar `npx tsc --noEmit` además de `npm run build`, porque el build de Next.js ignora los errores de TypeScript por configuración.
+El paquete está preparado para Windows de 64 bits. Windows puede mostrar una advertencia de seguridad para archivos descargados; desbloquee el archivo o permita su ejecución solo si confía en su procedencia. La base de datos no se guarda dentro del paquete, sino en `%LOCALAPPDATA%\LoteriaMercatDeColon\data`. Para trasladar datos existentes, importe el archivo `.db` desde **Registro → Importar datos**.
+
+Para una distribución comercial puede sustituirse el paquete portable por un instalador MSI o NSIS. El instalador debe:
+
+- Instalar los archivos de aplicación fuera de la carpeta de datos.
+- Crear un acceso directo a `LoteriaMercatDeColon.cmd`.
+- Mantener `%LOCALAPPDATA%\LoteriaMercatDeColon\data` durante las actualizaciones.
+- Ejecutar migraciones al iniciar una nueva versión.
+- Incluir una opción clara para abrir la carpeta de copias de seguridad.
+
+### Importador de ventas
+
+El comando de importación es:
+
+```powershell
+corepack pnpm sales:import -- "C:\ruta\ventas.txt"
+```
+
+El archivo debe comenzar por:
+
+```text
+Código Fecha Hora
+```
+
+El importador acepta fechas y horas con una o dos cifras, es idempotente y crea un origen provisional `VENT-AAAA-MM-DD-HH-MM-SS` cuando el boleto no estaba registrado.
+
+### Validación
+
+Comandos recomendados antes de publicar una versión:
+
+```powershell
+corepack pnpm exec tsc --noEmit --incremental false
+corepack pnpm build
+```
+
+El build de Next.js está configurado para no bloquearse por errores de TypeScript; por eso el type-check debe ejecutarse por separado.
+
+### Desarrollo futuro
+
+La aplicación local utiliza el mismo servidor Next.js que puede desplegarse en un servidor. Para una versión web permanente será necesario añadir, según las necesidades:
+
+- Un servidor o plataforma de despliegue.
+- Una base de datos compartida y copias de seguridad automatizadas.
+- Autenticación y autorización de usuarios.
+- Gestión de archivos PDF en almacenamiento persistente.
+- HTTPS, dominio y monitorización.

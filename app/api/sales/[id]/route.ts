@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
+const DEFAULT_TICKET_PRICE_CENTIMOS = 2000
 
 type SalePatch = {
   fecha?: string
@@ -53,7 +54,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       numero: updated.boleto.numeroJugado,
       serie: updated.boleto.serie,
       fraccion: updated.boleto.fraccion,
-      precio: updated.boleto.sorteo.precioCentimos / 100,
+      precio: (updated.boleto.sorteo.precioCentimos || DEFAULT_TICKET_PRICE_CENTIMOS) / 100,
       estado: updated.estado,
     })
   } catch (error) {

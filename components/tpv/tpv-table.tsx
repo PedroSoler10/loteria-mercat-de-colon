@@ -1,6 +1,8 @@
 'use client'
 
-import { Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Fragment } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -14,10 +16,62 @@ type Props = {
   onDelete: (sale: Sale) => void
 }
 
+function dateKey(date: Date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function monthKey(date: Date) {
+  return dateKey(date).slice(0, 7)
+}
+
+function weekKey(date: Date) {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+  return dateKey(start)
+}
+
+function monthLabel(key: string) {
+  return new Date(`${key}-01T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+}
+
+function weekLabel(key: string) {
+  const start = new Date(`${key}T12:00:00`)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 6)
+  return `Semana del ${start.toLocaleDateString('es-ES')} al ${end.toLocaleDateString('es-ES')}`
+}
+
+function dayLabel(key: string) {
+  return new Date(`${key}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+}
+
 export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const groups = useMemo(() => {
+    const months = new Map<string, Map<string, Map<string, Sale[]>>>()
+    for (const sale of sales) {
+      const date = new Date(sale.fecha)
+      const m = monthKey(date)
+      const w = weekKey(date)
+      const d = dateKey(date)
+      if (!months.has(m)) months.set(m, new Map())
+      if (!months.get(m)!.has(w)) months.get(m)!.set(w, new Map())
+      if (!months.get(m)!.get(w)!.has(d)) months.get(m)!.get(w)!.set(d, [])
+      months.get(m)!.get(w)!.get(d)!.push(sale)
+    }
+    return Array.from(months.entries()).sort(([a], [b]) => b.localeCompare(a))
+  }, [sales])
+  const allKeys = groups.flatMap(([month, weeks]) => [month, ...Array.from(weeks.entries()).flatMap(([week, days]) => [week, ...Array.from(days.keys())])])
+  const allExpanded = groups.length > 0 && allKeys.every((key) => expanded.has(key))
+  function toggleAll() {
+    setExpanded(allExpanded ? new Set() : new Set(allKeys))
+  }
   return (
     <section aria-labelledby="historial-title" className="rounded-lg border bg-card shadow-sm">
-      <div className="flex items-center justify-between border-b px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
         <div className="flex flex-col">
           <h2 id="historial-title" className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Historial transaccional
@@ -26,6 +80,7 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
             {sales.length} venta{sales.length !== 1 && 's'} · orden cronológico descendente
           </span>
         </div>
+        <Button type="button" variant="outline" onClick={toggleAll}>{allExpanded ? 'Contraer todo' : 'Expandir todo'}</Button>
       </div>
 
       <Table className="min-w-[920px] table-auto text-base">
@@ -50,7 +105,27 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
               </TableCell>
             </TableRow>
           )}
-          {sales.map((s) => {
+          {groups.map(([month, weeks]) => {
+            const monthSales = Array.from(weeks.values()).flatMap((days) => Array.from(days.values()).flat())
+            const monthOpen = expanded.has(month)
+            return <Fragment key={month}>
+              <TableRow className="cursor-pointer bg-muted/30 hover:bg-muted/50" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(month)) next.delete(month); else next.add(month); return next })}>
+                <TableCell colSpan={4} className="font-semibold capitalize"><div className="flex items-center gap-2"><ChevronRight className={`size-4 transition-transform ${monthOpen ? 'rotate-90' : ''}`} />{monthLabel(month)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{monthSales.length} ventas</TableCell><TableCell />
+              </TableRow>
+              {monthOpen && Array.from(weeks.entries()).sort(([a], [b]) => b.localeCompare(a)).map(([week, days]) => {
+                const weekSales = Array.from(days.values()).flat()
+                const weekOpen = expanded.has(week)
+                return <Fragment key={week}>
+                  <TableRow className="cursor-pointer bg-muted/20 hover:bg-muted/40" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(week)) next.delete(week); else next.add(week); return next })}>
+                    <TableCell colSpan={4} className="pl-10 font-semibold capitalize"><div className="flex items-center gap-2"><ChevronRight className={`size-4 transition-transform ${weekOpen ? 'rotate-90' : ''}`} />{weekLabel(week)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{weekSales.length} ventas</TableCell><TableCell />
+                  </TableRow>
+                  {weekOpen && Array.from(days.entries()).sort(([a], [b]) => b.localeCompare(a)).map(([day, group]) => {
+                    const dayOpen = expanded.has(day)
+                    return <Fragment key={day}>
+                      <TableRow className="cursor-pointer bg-muted/10 hover:bg-muted/30" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(day)) next.delete(day); else next.add(day); return next })}>
+                        <TableCell colSpan={4} className="pl-20 font-semibold capitalize"><div className="flex items-center gap-2"><ChevronRight className={`size-4 transition-transform ${dayOpen ? 'rotate-90' : ''}`} />{dayLabel(day)}</div></TableCell><TableCell className="text-right font-mono tabular-nums">{group.length} ventas</TableCell><TableCell />
+                      </TableRow>
+                      {dayOpen && group.map((s) => {
             const { fecha, hora } = formatFechaHora(s.fecha)
             return (
               <TableRow key={s.id} className={s.estado === 'anulada' ? 'group opacity-70' : 'group'}>
@@ -118,6 +193,12 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
                 </TableCell>
               </TableRow>
             )
+                      })}
+                    </Fragment>
+                  })}
+                </Fragment>
+              })}
+            </Fragment>
           })}
         </TableBody>
       </Table>
