@@ -85,7 +85,7 @@ export function TpvTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) 
 
       <Table className="min-w-[920px] table-auto text-base">
         <colgroup>
-          {Array.from({ length: 6 }, (_, index) => <col key={index} className="w-1/6" />)}
+        {Array.from({ length: 6 }, (_, index) => <col key={index} className="w-1/6" />)}
         </colgroup>
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">

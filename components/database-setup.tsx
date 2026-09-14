@@ -12,15 +12,20 @@ export function DatabaseSetup({ onReady }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  async function initialize() {
+  async function createDatabase() {
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/database', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initialize: true }) })
+      const response = await fetch('/api/database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialize: true }),
+      })
       const result = await response.json() as { error?: string }
       if (!response.ok) throw new Error(result.error ?? 'No se pudo crear la base de datos')
       await onReady()
     } catch (reason) {
+      if (reason instanceof DOMException && reason.name === 'AbortError') return
       setError(reason instanceof Error ? reason.message : 'No se pudo crear la base de datos')
     } finally {
       setBusy(false)
@@ -67,12 +72,12 @@ export function DatabaseSetup({ onReady }: Props) {
           <Button type="button" onClick={() => void importDatabase()} disabled={busy}>
             <Upload /> {busy ? 'Importando…' : 'Importar base de datos'}
           </Button>
-          <Button type="button" variant="outline" onClick={() => void initialize()} disabled={busy}>
-            <Database /> Empezar con una base nueva
+          <Button type="button" variant="outline" onClick={() => void createDatabase()} disabled={busy}>
+            <Database /> {busy ? 'Creando base de datos…' : 'Crear una base de datos nueva'}
           </Button>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          La base nueva se guardará en la carpeta de datos de esta instalación. Podrás hacer una copia o cambiar su ubicación desde Registro.
+          La base activa se guarda siempre en <code>%LOCALAPPDATA%\LoteriaMercatDeColon\data\loteria.db</code>. Al importar, el archivo elegido se copia allí; al crear una nueva, se genera allí desde cero.
         </p>
         {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
       </section>

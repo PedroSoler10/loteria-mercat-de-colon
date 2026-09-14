@@ -13,7 +13,7 @@ function parseTicketId(value: string) {
   return { numeroJugado, serie, fraccion }
 }
 
-function toSale(venta: { idBoleto: string; fechaHoraVenta: Date; estado: string; boleto: { numeroJugado: string; serie: string; fraccion: string; sorteo: { tipoJuego: number; nombreSorteo: string; anoCompleto: number; precioCentimos: number } } }) {
+function toSale(venta: { idBoleto: string; fechaHoraVenta: Date; estado: string; boleto: { numeroJugado: string; serie: string; fraccion: string; origen: { tipoOrigen: string }; sorteo: { tipoJuego: number; nombreSorteo: string; anoCompleto: number; precioCentimos: number } } }) {
   return {
     id: venta.idBoleto,
     fecha: venta.fechaHoraVenta.toISOString(),
@@ -25,12 +25,13 @@ function toSale(venta: { idBoleto: string; fechaHoraVenta: Date; estado: string;
     fraccion: venta.boleto.fraccion,
     precio: (venta.boleto.sorteo.precioCentimos || DEFAULT_TICKET_PRICE_CENTIMOS) / 100,
     estado: venta.estado,
+    importada: venta.boleto.origen.tipoOrigen === 'Venta importada',
   }
 }
 
 export async function GET() {
   const ventas = await prisma.venta.findMany({
-    include: { boleto: { include: { sorteo: true } } },
+    include: { boleto: { include: { sorteo: true, origen: true } } },
     orderBy: { fechaHoraVenta: 'desc' },
   })
   return Response.json(ventas.map(toSale))
@@ -61,11 +62,11 @@ export async function POST(request: Request) {
           ? await tx.venta.update({
               where: { idBoleto: boleto.idBoleto },
               data: { estado: 'activa', fechaHoraVenta: new Date(), fechaHoraAnulacion: null, motivoAnulacion: null },
-              include: { boleto: { include: { sorteo: true } } },
+              include: { boleto: { include: { sorteo: true, origen: true } } },
             })
           : await tx.venta.create({
               data: { idBoleto: boleto.idBoleto },
-              include: { boleto: { include: { sorteo: true } } },
+              include: { boleto: { include: { sorteo: true, origen: true } } },
             })
         created.push(toSale(venta))
       }

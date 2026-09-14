@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useMemo, useRef, useState } from 'react'
-import { ChevronRight, Database, FileText, FileUp, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, FileText, FileUp, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import type { Albaran, Cedido } from '@/lib/record-data'
 import { formatFechaHora, eur } from '@/lib/tpv-data'
 
-type ImportProps = { onImported: () => Promise<void>; onDatabaseImported: () => Promise<void> }
+type ImportProps = { onImported: () => Promise<void>; onDatabaseImported: () => Promise<void>; databasePath: string }
 type OriginPatch = Pick<Albaran, 'idOrigen' | 'nombre' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>
 type DeleteResult = { error?: string; salesCount?: number }
 type TableProps = { albaranes: Albaran[]; onUpdate: (id: string, patch: OriginPatch) => Promise<string | undefined>; onDelete: (id: string, deleteSales?: boolean) => Promise<DeleteResult> }
@@ -152,14 +152,7 @@ function ToggleLabel({ open, label, onClick, compact = false }: { open: boolean;
 type DrawGroup = { nombreSorteo: string; tipos: { tipoOrigen: string; origenes: Albaran[] }[] }
 const COLS = 11
 
-type SaveFilePickerWindow = Window & {
-  showSaveFilePicker?: (options?: {
-    suggestedName?: string
-    types?: Array<{ description: string; accept: Record<string, string[]> }>
-  }) => Promise<FileSystemFileHandle>
-}
-
-export function ImportDeliveryNotes({ onImported, onDatabaseImported }: ImportProps) {
+export function ImportDeliveryNotes({ onImported, onDatabaseImported, databasePath }: ImportProps) {
   const [dragging, setDragging] = useState(false)
   const [pending, setPending] = useState<File[]>([])
   const [processing, setProcessing] = useState(false)
@@ -169,7 +162,7 @@ export function ImportDeliveryNotes({ onImported, onDatabaseImported }: ImportPr
     if (!files) return
     const supported = Array.from(files).filter((file) => {
       const name = file.name.toLowerCase()
-      return file.type === 'application/pdf' || name.endsWith('.pdf') || name.endsWith('.db') || name.endsWith('.sqlite') || name.endsWith('.sqlite3')
+      return file.type === 'application/pdf' || name.endsWith('.pdf') || name.endsWith('.db') || name.endsWith('.sqlite') || name.endsWith('.sqlite3') || name.endsWith('.txt')
     })
     if (supported.length) setPending((current) => [...current, ...supported])
   }
@@ -180,7 +173,9 @@ export function ImportDeliveryNotes({ onImported, onDatabaseImported }: ImportPr
       for (const file of pending) {
         const formData = new FormData(); formData.append('file', file)
         const isDatabase = /\.(db|sqlite|sqlite3)$/i.test(file.name)
-        const response = await fetch(isDatabase ? '/api/database' : '/api/delivery-notes', { method: 'POST', body: formData })
+        const isSalesText = /\.txt$/i.test(file.name)
+        const endpoint = isDatabase ? '/api/database' : isSalesText ? '/api/sales/import-text' : '/api/delivery-notes'
+        const response = await fetch(endpoint, { method: 'POST', body: formData })
         const result = await response.json()
         if (!response.ok) throw new Error(result.error ?? `No se pudo procesar ${file.name}`)
       }
@@ -190,38 +185,15 @@ export function ImportDeliveryNotes({ onImported, onDatabaseImported }: ImportPr
       await onImported()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo procesar el archivo') } finally { setProcessing(false) }
   }
-  async function chooseDatabaseLocation() {
-    const picker = (window as SaveFilePickerWindow).showSaveFilePicker
-    if (!picker) {
-      setError('Este navegador no permite abrir el explorador para guardar. Use un navegador compatible o importe un archivo de base de datos.')
-      return
-    }
-    setProcessing(true); setError('')
-    try {
-      const response = await fetch('/api/database/download')
-      if (!response.ok) throw new Error('No se pudo preparar la base de datos')
-      const handle = await picker({
-        suggestedName: 'loteria.db',
-        types: [{ description: 'Base de datos SQLite', accept: { 'application/octet-stream': ['.db', '.sqlite', '.sqlite3'] } }],
-      })
-      const writable = await handle.createWritable()
-      await writable.write(await response.blob())
-      await writable.close()
-      setError('Base de datos guardada en la ubicación elegida. Para convertirla en la base activa, impórtela desde este mismo bloque al iniciar la aplicación.')
-    } catch (reason) {
-      if (reason instanceof DOMException && reason.name === 'AbortError') return
-      setError(reason instanceof Error ? reason.message : 'No se pudo guardar la base de datos')
-    } finally { setProcessing(false) }
-  }
   return <section aria-labelledby="import-title" className="flex h-full flex-col gap-4 rounded-lg border bg-card p-5 shadow-sm">
     <div className="flex items-center justify-between"><h2 id="import-title" className="text-lg font-semibold">Importar datos</h2><span className="text-sm text-muted-foreground">PDF o SQLite</span></div>
-    <p className="text-sm text-muted-foreground">Seleccione uno o varios PDF de albaranes o archivos de base de datos. Cada formato se enviará automáticamente a su importador.</p>
+    <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm"><p className="font-medium">Base de datos activa</p><p className="break-all font-mono text-xs text-muted-foreground">{databasePath || 'No configurada'}</p></div>
+    <p className="text-sm text-muted-foreground">Seleccione PDF de albaranes, una base SQLite o un TXT de ventas. Los archivos elegidos se importan en la base activa indicada arriba.</p>
     <div className="flex flex-wrap gap-2">
       <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={processing}><FileUp /> Seleccionar archivos</Button>
-      <Button type="button" variant="outline" onClick={() => void chooseDatabaseLocation()} disabled={processing}><Database /> Elegir ubicación para crear una base de datos</Button>
     </div>
     <div role="button" tabIndex={0} aria-label="Zona para soltar albaranes PDF o bases de datos" onClick={() => inputRef.current?.click()} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); inputRef.current?.click() } }} onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); handleFiles(event.dataTransfer.files) }} className={cn('flex min-h-36 flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-6 py-8 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring', dragging ? 'border-accent bg-accent/10' : 'border-input bg-muted/40 hover:border-primary/40 hover:bg-muted')}>
-      <FileUp className="size-8 text-primary" /><p className="text-base font-medium">Arrastra aquí albaranes PDF o bases de datos</p><p className="text-sm text-muted-foreground">o haz clic para seleccionarlos</p><input ref={inputRef} type="file" accept=".pdf,.db,.sqlite,.sqlite3" multiple className="sr-only" onChange={(event) => handleFiles(event.target.files)} />
+      <FileUp className="size-8 text-primary" /><p className="text-base font-medium">Arrastra aquí PDF, bases de datos o TXT de ventas</p><p className="text-sm text-muted-foreground">o haz clic para seleccionarlos</p><input ref={inputRef} type="file" accept=".pdf,.db,.sqlite,.sqlite3,.txt" multiple className="sr-only" onChange={(event) => handleFiles(event.target.files)} />
     </div>
     {pending.length > 0 && <div className="flex flex-col gap-2 rounded-md border border-accent/50 bg-accent/10 p-3"><p className="text-sm font-medium text-accent-foreground">{pending.length} archivo{pending.length === 1 ? '' : 's'} pendiente{pending.length === 1 ? '' : 's'} de procesar</p><ul className="flex flex-col gap-1">{pending.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 text-sm"><FileText className="size-4 shrink-0 text-muted-foreground" /><span className="truncate">{file.name}</span></li>)}</ul><div className="flex gap-2"><Button size="lg" className="h-11 flex-1 text-base" disabled={processing} onClick={() => void processPending()}>{processing ? 'Procesando…' : 'Procesar'}</Button><Button size="lg" variant="outline" className="h-11 text-base" disabled={processing} onClick={() => setPending([])}>Descartar</Button></div></div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
@@ -242,7 +214,7 @@ export function ImportedDeliveryNotesTable({ albaranes, onUpdate, onDelete }: Ta
   const [openSeries, setOpenSeries] = useState<Set<string>>(new Set())
   const draws = useMemo<DrawGroup[]>(() => {
     const byDraw = new Map<string, Map<string, Albaran[]>>()
-    for (const origin of albaranes.filter((origin) => origin.tipoOrigen !== 'Cesión de Consignación')) {
+    for (const origin of albaranes.filter((origin) => origin.tipoOrigen !== 'Cesión de Consignación' && origin.tipoOrigen !== 'Venta importada')) {
       if (!byDraw.has(origin.nombreSorteo)) byDraw.set(origin.nombreSorteo, new Map())
       const byType = byDraw.get(origin.nombreSorteo)!
       if (!byType.has(origin.tipoOrigen)) byType.set(origin.tipoOrigen, [])
