@@ -12,8 +12,13 @@ __v0_jsx-dev-runtime.ts
 
 # Local database and uploaded documents
 /data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Common ignores
 node_modules
 .next/
+/dist/
+*.tsbuildinfo
 .DS_Store

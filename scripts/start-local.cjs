@@ -14,7 +14,7 @@ const env = {
   ...process.env,
   LOTERIA_CONFIG_DIR: configDirectory,
   NODE_ENV: 'production',
-  LOTERIA_DATA_DIR: dataDirectory,
+  LOTERIA_DATA_DIR: defaultDataDirectory,
   DATABASE_URL: `file:${databasePath}`,
   PORT: process.env.PORT ?? '3000',
   NODE_PATH: path.join(root, 'node_modules'),
