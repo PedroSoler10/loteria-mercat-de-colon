@@ -1,4 +1,4 @@
-const { existsSync, mkdirSync, readFileSync } = require('node:fs')
+const { existsSync, mkdirSync } = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { execFileSync } = require('node:child_process')
@@ -7,18 +7,8 @@ const root = path.resolve(__dirname, '..')
 const configDirectory = process.env.LOTERIA_CONFIG_DIR
   ?? path.join(process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? root, 'AppData', 'Local'), 'LoteriaMercatDeColon')
 const defaultDataDirectory = process.env.LOTERIA_DATA_DIR ?? path.join(configDirectory, 'data')
-let dataDirectory = defaultDataDirectory
-let databasePath = path.join(dataDirectory, 'loteria.db')
-try {
-  const configured = JSON.parse(readFileSync(path.join(configDirectory, 'database-location.json'), 'utf8'))
-  if (typeof configured.databasePath === 'string' && path.isAbsolute(configured.databasePath)) {
-    databasePath = configured.databasePath
-    dataDirectory = path.dirname(databasePath)
-  }
-} catch {
-  // The default data directory is used until the user chooses another location.
-}
-mkdirSync(dataDirectory, { recursive: true })
+const databasePath = path.join(defaultDataDirectory, 'loteria.db')
+mkdirSync(defaultDataDirectory, { recursive: true })
 
 const env = {
   ...process.env,
@@ -31,6 +21,11 @@ const env = {
 }
 
 const prismaCli = path.join(root, 'node_modules', 'prisma', 'build', 'index.js')
+execFileSync(process.execPath, [prismaCli, 'generate'], {
+  cwd: root,
+  env,
+  stdio: 'inherit',
+})
 const migration = execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
   cwd: root,
   env,
@@ -43,8 +38,21 @@ if (!existsSync(serverPath)) {
   throw new Error('No existe la compilación de producción. Ejecuta primero: npm run build')
 }
 
-const server = spawn(process.execPath, [serverPath], { cwd: root, env, stdio: 'inherit' })
-server.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
+function startServer() {
+  return new Promise((resolve) => {
+    const server = spawn(process.execPath, [serverPath], { cwd: root, env, stdio: 'inherit' })
+    server.on('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0)))
+  })
+}
+
+void (async () => {
+  while (true) {
+    const code = await startServer()
+    if (code !== 75) process.exit(code)
+    env.DATABASE_URL = `file:${databasePath}`
+    execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], { cwd: root, env, stdio: 'inherit' })
+  }
+})()
 
 const url = `http://localhost:${env.PORT}`
 setTimeout(() => {

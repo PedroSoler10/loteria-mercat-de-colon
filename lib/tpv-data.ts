@@ -13,6 +13,7 @@ export type Sale = {
   fraccion: string
   precio: number
   estado: 'activa' | 'anulada'
+  importada?: boolean
 }
 
 export type Periodo = 'hoy' | 'semana' | 'mes'

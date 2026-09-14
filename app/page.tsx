@@ -17,6 +17,7 @@ export default function Page() {
   const [cedidos, setCedidos] = useState<Cedido[]>([])
   const [albaranes, setAlbaranes] = useState<Albaran[]>([])
   const [databaseReady, setDatabaseReady] = useState<boolean | null>(null)
+  const [databasePath, setDatabasePath] = useState('')
 
   async function refreshData() {
     const [inventoryResponse, salesResponse, cedidosResponse, originsResponse] = await Promise.all([
@@ -53,7 +54,8 @@ export default function Page() {
     fetch('/api/database', { cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) throw new Error('No se pudo comprobar la base de datos')
-        const result = await response.json() as { configured?: boolean }
+        const result = await response.json() as { configured?: boolean; path?: string }
+        setDatabasePath(result.path ?? '')
         setDatabaseReady(result.configured === true)
         if (result.configured === true) await refreshData()
       })
@@ -61,7 +63,18 @@ export default function Page() {
   }, [])
 
   async function completeDatabaseSetup() {
+    const response = await fetch('/api/database', { cache: 'no-store' })
+    const result = await response.json() as { path?: string }
+    setDatabasePath(result.path ?? '')
     setDatabaseReady(true)
+    await refreshData()
+  }
+
+  async function refreshDatabaseStatus() {
+    const response = await fetch('/api/database', { cache: 'no-store' })
+    if (!response.ok) throw new Error('No se pudo consultar la base de datos')
+    const result = await response.json() as { path?: string }
+    setDatabasePath(result.path ?? '')
     await refreshData()
   }
 
@@ -148,6 +161,9 @@ export default function Page() {
             onDelete={deleteOrigin}
             onImported={refreshData}
             cedidos={cedidos}
+            databasePath={databasePath}
+            onDatabaseImported={refreshDatabaseStatus}
+            sales={sales}
           />
         )}
         {tab === 'Inventario' && <InventoryTab tickets={tickets} onTicketsChange={setTickets} onSale={registerSale} />}

@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const defaultConfigDirectory = process.env.LOTERIA_CONFIG_DIR ?? path.join(process.cwd(), 'data')
@@ -11,19 +11,15 @@ export function getDatabasePath() {
 }
 
 export async function getConfiguredDatabasePath() {
-  try {
-    const config = JSON.parse(await readFile(configPath, 'utf8')) as { databasePath?: unknown }
-    if (typeof config.databasePath === 'string' && path.isAbsolute(config.databasePath)) return config.databasePath
-  } catch {
-    // The default location is used until the user chooses another one.
-  }
   return getDatabasePath()
 }
 
 export async function isDatabaseConfigured() {
   try {
     const config = JSON.parse(await readFile(configPath, 'utf8')) as { databasePath?: unknown }
-    return typeof config.databasePath === 'string' && path.isAbsolute(config.databasePath)
+    if (typeof config.databasePath !== 'string' || path.resolve(config.databasePath) !== getDatabasePath()) return false
+    await access(getDatabasePath())
+    return true
   } catch {
     return false
   }
