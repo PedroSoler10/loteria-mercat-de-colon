@@ -4,6 +4,10 @@ Aplicación web local para gestionar albaranes, inventario de boletos, cesiones,
 
 Este documento está organizado para que una persona pueda empezar a utilizar la aplicación sin conocimientos técnicos. La información de desarrollo y arquitectura aparece al final.
 
+Para una explicación específica de qué se versiona, qué necesita el ordenador
+de desarrollo y qué necesita el ordenador de destino, consulte
+[`docs/despliegue.md`](docs/despliegue.md).
+
 ## 1. Instalación para usuarios
 
 ### Opción recomendada: paquete portable de Windows
