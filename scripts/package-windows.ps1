@@ -9,10 +9,35 @@ $nodeArchive = Join-Path $env:TEMP "node-v$NodeVersion-win-x64.zip"
 $nodeExtract = Join-Path $env:TEMP "loteria-node-$NodeVersion"
 $nodeUrl = "https://nodejs.org/dist/v$NodeVersion/node-v$NodeVersion-win-x64.zip"
 
-if (Test-Path $OutputDirectory) { Remove-Item $OutputDirectory -Recurse -Force }
+if (Test-Path $OutputDirectory) {
+  & $env:ComSpec /c "rmdir /s /q `"$OutputDirectory`""
+  if (Test-Path $OutputDirectory) {
+    $emptyDirectory = Join-Path $env:TEMP 'loteria-package-empty'
+    New-Item $emptyDirectory -ItemType Directory -Force | Out-Null
+    & robocopy $emptyDirectory $OutputDirectory /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    & $env:ComSpec /c "rmdir /s /q `"$OutputDirectory`""
+    Remove-Item $emptyDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $OutputDirectory) {
+      throw "No se pudo limpiar el directorio de salida: $OutputDirectory"
+    }
+  }
+}
 New-Item $OutputDirectory -ItemType Directory -Force | Out-Null
 
 Write-Host 'Compilando la aplicación...'
+if (Test-Path '.next') {
+  & $env:ComSpec /c 'rmdir /s /q ".next"'
+  if (Test-Path '.next') {
+    $emptyNextDirectory = Join-Path $env:TEMP 'loteria-empty-next'
+    New-Item $emptyNextDirectory -ItemType Directory -Force | Out-Null
+    & robocopy $emptyNextDirectory '.next' /MIR /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    & $env:ComSpec /c 'rmdir /s /q ".next"'
+    Remove-Item $emptyNextDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path '.next') {
+      throw 'No se pudo limpiar la compilación anterior de Next.js.'
+    }
+  }
+}
 corepack pnpm build
 if ($LASTEXITCODE -ne 0) {
   throw "La compilación de producción ha fallado (código $LASTEXITCODE)."
@@ -31,16 +56,10 @@ Copy-Item (Join-Path $nodeExtract "node-v$NodeVersion-win-x64") $runtimeDirector
 Write-Host 'Preparando las dependencias de producción...'
 New-Item $appDirectory -ItemType Directory -Force | Out-Null
 Copy-Item 'package.json' (Join-Path $appDirectory 'package.json') -Force
-Copy-Item 'pnpm-lock.yaml' (Join-Path $appDirectory 'pnpm-lock.yaml') -Force
 Copy-Item 'prisma' (Join-Path $appDirectory 'prisma') -Recurse
 Copy-Item 'prisma.config.ts' (Join-Path $appDirectory 'prisma.config.ts') -Force
-@'
-onlyBuiltDependencies[]=prisma
-onlyBuiltDependencies[]=@prisma/client
-onlyBuiltDependencies[]=@prisma/engines
-'@ | Set-Content (Join-Path $appDirectory '.npmrc') -Encoding ASCII
 Push-Location $appDirectory
-corepack pnpm install --prod --ignore-workspace --ignore-scripts --frozen-lockfile
+npm install --omit=dev --ignore-scripts --no-audit --no-fund
 $installExitCode = $LASTEXITCODE
 Pop-Location
 if ($installExitCode -ne 0) {
@@ -55,34 +74,51 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host 'Copiando la compilación y los recursos...'
 New-Item (Join-Path $appDirectory '.next') -ItemType Directory -Force | Out-Null
 New-Item (Join-Path $appDirectory '.next\standalone') -ItemType Directory -Force | Out-Null
-Copy-Item '.next\standalone\*' (Join-Path $appDirectory '.next\standalone') -Recurse -Force
+Copy-Item '.next\standalone\server.js' (Join-Path $appDirectory '.next\standalone\server.js') -Force
+$standaloneNextSource = Join-Path $root '.next\standalone\.next'
+$standaloneNextTarget = Join-Path $appDirectory '.next\standalone\.next'
+Copy-Item $standaloneNextSource $standaloneNextTarget -Recurse -Force
 $standaloneNextDirectory = Join-Path $appDirectory '.next\standalone\.next'
 New-Item $standaloneNextDirectory -ItemType Directory -Force | Out-Null
 Copy-Item '.next\static' (Join-Path $standaloneNextDirectory 'static') -Recurse -Force
-$standaloneNodeModules = Join-Path $appDirectory '.next\standalone\node_modules'
-New-Item $standaloneNodeModules -ItemType Directory -Force | Out-Null
-$prismaClientPackage = Get-ChildItem (Join-Path $appDirectory 'node_modules\.pnpm') -Directory -Filter '@prisma+client@*' | Select-Object -First 1
-if (-not $prismaClientPackage) {
-  throw 'No se encontró @prisma/client en las dependencias de producción.'
+# Next may include a second node_modules tree inside the standalone output. It
+# contains junctions to the development checkout and must not shadow the
+# self-contained production dependencies in the application directory.
+$standaloneNextNodeModules = Join-Path $standaloneNextDirectory 'node_modules'
+if (Test-Path $standaloneNextNodeModules) {
+  Remove-Item $standaloneNextNodeModules -Recurse -Force
 }
-Copy-Item (Join-Path $prismaClientPackage.FullName 'node_modules\.prisma') (Join-Path $standaloneNodeModules '.prisma') -Recurse -Force
-New-Item (Join-Path $standaloneNodeModules '@swc') -ItemType Directory -Force | Out-Null
-$swcHelpersPackage = Get-ChildItem (Join-Path $appDirectory 'node_modules\.pnpm') -Directory -Filter '@swc+helpers@*' | Select-Object -First 1
-if (-not $swcHelpersPackage) {
-  throw 'No se encontró @swc/helpers en las dependencias de producción.'
+$prismaAliases = @(
+  Get-ChildItem $standaloneNextTarget -Recurse -File -Filter '*.js' |
+    ForEach-Object {
+      $content = Get-Content -LiteralPath $_.FullName -Raw
+      [regex]::Matches($content, '@prisma/client-[a-z0-9]+')
+    } |
+    ForEach-Object { $_.Value } |
+    Sort-Object -Unique
+)
+foreach ($prismaAlias in $prismaAliases) {
+  $aliasPackageName = $prismaAlias.Substring(8)
+  $aliasDirectory = Join-Path $appDirectory "node_modules\@prisma\$aliasPackageName"
+  New-Item $aliasDirectory -ItemType Directory -Force | Out-Null
+  @'
+{
+  "main": "index.js"
 }
-Copy-Item (Join-Path $swcHelpersPackage.FullName 'node_modules\@swc\helpers') (Join-Path $standaloneNodeModules '@swc\helpers') -Recurse -Force
-$nextEnvPackage = Get-ChildItem (Join-Path $appDirectory 'node_modules\.pnpm') -Directory -Filter '@next+env@*' | Select-Object -First 1
-if (-not $nextEnvPackage) {
-  throw 'No se encontró @next/env en las dependencias de producción.'
+'@ | Set-Content (Join-Path $aliasDirectory 'package.json') -Encoding ASCII
+  "module.exports = require('@prisma/client')" |
+    Set-Content (Join-Path $aliasDirectory 'index.js') -Encoding ASCII
 }
-New-Item (Join-Path $standaloneNodeModules '@next') -ItemType Directory -Force | Out-Null
-Copy-Item (Join-Path $nextEnvPackage.FullName 'node_modules\@next\env') (Join-Path $standaloneNodeModules '@next\env') -Recurse -Force
+$generatedPrismaClient = Join-Path $appDirectory 'node_modules\.prisma\client'
+if (-not (Test-Path $generatedPrismaClient)) {
+  throw 'No se encontró el Prisma Client generado en las dependencias de producción.'
+}
 Copy-Item 'public' (Join-Path $appDirectory '.next\standalone\public') -Recurse
 Copy-Item 'scripts' (Join-Path $appDirectory 'scripts') -Recurse
 
 # Nunca distribuir datos de desarrollo dentro del paquete portable.
-Get-ChildItem $OutputDirectory -Recurse -File -Include '*.db', '*.sqlite', '*.sqlite3' | Remove-Item -Force
+Get-ChildItem $OutputDirectory -Recurse -File -Include '*.db', '*.sqlite', '*.sqlite3' -ErrorAction SilentlyContinue |
+  Remove-Item -Force
 
 @'
 @echo off
