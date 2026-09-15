@@ -85,6 +85,13 @@ para Windows. El resultado es:
 dist\LoteriaMercatDeColon\
 ```
 
+Durante el empaquetado, las dependencias de producción se instalan con npm en
+la carpeta temporal de distribución. Esto es intencionado: pnpm se mantiene
+como gestor del proyecto y de desarrollo, pero sus enlaces internos no se
+incluyen en el portable. El resultado contiene copias físicas de las
+dependencias y el alias de Prisma que emite Next.js, por lo que se puede mover
+a otra carpeta u otro ordenador sin conservar rutas del equipo que lo generó.
+
 Antes de distribuirlo, compruebe que no contiene archivos de base de datos.
 Se puede comprimir la carpeta completa, pero el usuario debe descomprimirla
 antes de ejecutar el lanzador.
