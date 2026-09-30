@@ -136,7 +136,6 @@ export async function POST(request: Request) {
           idOrigen,
           idSorteo: sorteo.idSorteo,
           tipoOrigen: rawScan ? 'Escaner' : 'Manual',
-          nombreAlbaran: rawScan ? 'Alta mediante lectura' : 'Alta manual',
           fechaEmision: originDate,
           totalNumeros: 1,
           totalSeries: series.length,

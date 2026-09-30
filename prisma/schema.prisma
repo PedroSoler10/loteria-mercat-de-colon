@@ -31,7 +31,6 @@ model Origen {
   idSorteo        String?  @map("id_sorteo")
   idReceptorAdmin String?  @map("id_receptor_admin")
   tipoOrigen      String   @map("tipo_origen")
-  nombreAlbaran   String   @map("nombre_albaran")
   fechaHoraCarga  DateTime @default(now()) @map("fecha_hora_carga")
   fechaEmision    DateTime? @map("fecha_emision")
   totalNumeros    Int      @default(0) @map("total_numeros")

@@ -7,7 +7,7 @@ import type { Sale } from '@/lib/tpv-data'
 type Props = {
   albaranes: Albaran[]
   onManualEntry: () => Promise<void>
-  onUpdate: (idOrigen: string, patch: Partial<Pick<Albaran, 'idOrigen' | 'nombre' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>>) => Promise<string | undefined>
+  onUpdate: (idOrigen: string, patch: Partial<Pick<Albaran, 'idOrigen' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>>) => Promise<string | undefined>
   onDelete: (idOrigen: string, deleteSales?: boolean) => Promise<{ error?: string; salesCount?: number }>
   onImported: () => Promise<void>
   cedidos: Cedido[]

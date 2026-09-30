@@ -36,7 +36,6 @@ export async function GET() {
     return {
       idOrigen: origin.idOrigen,
       idReceptorAdmin: origin.idReceptorAdmin,
-      nombre: origin.nombreAlbaran,
       nombreSorteo: origin.sorteo?.nombreSorteo ?? 'Sorteo no identificado',
       tipoOrigen: origin.tipoOrigen,
       fechaCarga: origin.fechaHoraCarga.toISOString(),

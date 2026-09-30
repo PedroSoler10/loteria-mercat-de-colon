@@ -82,7 +82,6 @@ Registra de dónde procede cada alta de inventario.
 | --- | --- | --- |
 | `id_origen` | VARCHAR(80) | Clave primaria; albarán o ID autogenerado |
 | `tipo_origen` | VARCHAR(20) | `Albarán`, `Manual` o `Lectura` |
-| `nombre_albaran` | VARCHAR(200) | Extraído del PDF cuando proceda |
 | `fecha_hora_carga` | TIMESTAMP | Momento de procesamiento |
 | `pdf_path` | VARCHAR(500) | Ruta local del PDF conservado |
 | `pdf_checksum` | VARCHAR(128) | Evita importar el mismo PDF dos veces |
