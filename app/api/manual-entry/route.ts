@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import { temporaryOriginId } from '@/lib/origin-id'
+import { ensureSorteo } from '@/lib/sorteos-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,10 +62,8 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const sorteo = await tx.sorteo.findUnique({
-        where: { tipoJuego_anoCompleto_numeroSorteo: { tipoJuego, anoCompleto, numeroSorteo } },
-      })
-      if (!sorteo) throw new Error('El sorteo no existe en la base de datos')
+      const sorteo = await ensureSorteo(tx, { tipoJuego, anoCompleto, numeroSorteo }, { createIfUnknown: false })
+      if (!sorteo) throw new Error('El sorteo no existe. Créalo antes en el apartado Sorteos de la pestaña Registro')
 
       const series = []
       for (let value = Number(serieDesde); value <= Number(serieHasta); value += 1) series.push(String(value).padStart(3, '0'))

@@ -4,6 +4,10 @@ import path from 'node:path'
 const defaultConfigDirectory = process.env.LOTERIA_CONFIG_DIR ?? path.join(process.cwd(), 'data')
 const configPath = path.join(defaultConfigDirectory, 'database-location.json')
 
+export function getConfigDirectory() {
+  return defaultConfigDirectory
+}
+
 export function getDatabasePath() {
   const databaseUrl = process.env.DATABASE_URL
   if (databaseUrl?.startsWith('file:')) return path.resolve(/* turbopackIgnore: true */ process.cwd(), databaseUrl.slice(5))

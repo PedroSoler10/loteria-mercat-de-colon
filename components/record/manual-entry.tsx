@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ScanBarcode, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,7 +57,15 @@ export function ManualEntry({ onCreated }: Props) {
   const [digitosControl, setDigitosControl] = useState('0000')
   const [isFullSeries, setIsFullSeries] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [juegos, setJuegos] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/sorteos', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => { if (result?.juegos) setJuegos(result.juegos) })
+      .catch(() => undefined)
+  }, [])
 
   function handleScan(value: string) {
     setScan(value)
@@ -171,7 +179,7 @@ export function ManualEntry({ onCreated }: Props) {
           <NumericField
             id="tipo-juego"
             label="Tipo de Juego"
-            hint="5 = Lotería Nacional"
+            hint={juegos[tipoJuego] ? `${tipoJuego} = ${juegos[tipoJuego]}` : undefined}
             value={tipoJuego}
             onChange={setTipoJuego}
             maxLength={2}
