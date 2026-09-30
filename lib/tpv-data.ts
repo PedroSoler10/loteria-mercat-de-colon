@@ -110,6 +110,39 @@ export function sumSales(list: Sale[]) {
 
 export const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' })
 
+/** Rango legible de fracciones: [1,2,3,5] -> "1-3, 5". */
+export function formatFracciones(fracciones: number[]) {
+  const sorted = [...new Set(fracciones)].sort((a, b) => a - b)
+  const parts: string[] = []
+  for (let i = 0; i < sorted.length; ) {
+    let j = i
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j += 1
+    parts.push(j > i ? `${sorted[i]}-${sorted[j]}` : String(sorted[i]))
+    i = j + 1
+  }
+  return parts.join(', ')
+}
+
+/** Interpreta "1-10", "3" o "1-3, 5" como lista de fracciones; devuelve null si no es válido. */
+export function parseFracciones(text: string) {
+  const result = new Set<number>()
+  for (const part of text.split(/[,;\s]+/).filter(Boolean)) {
+    const match = /^(\d{1,2})(?:-(\d{1,2}))?$/.exec(part)
+    if (!match) return null
+    const from = Number(match[1])
+    const to = match[2] === undefined ? from : Number(match[2])
+    if (from < 1 || to < from) return null
+    for (let n = from; n <= to; n += 1) result.add(n)
+  }
+  return result.size > 0 ? [...result].sort((a, b) => a - b) : null
+}
+
+/** "30/09/2026 11:50" */
+export function formatFecha(iso: string) {
+  const { fecha, hora } = formatFechaHora(iso)
+  return `${fecha} ${hora}`
+}
+
 export function formatFechaHora(iso: string) {
   const d = new Date(iso)
   return {

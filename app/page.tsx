@@ -8,7 +8,8 @@ import { TpvTab } from '@/components/tpv/tpv-tab'
 import { AnalysisTab } from '@/components/analysis-tab'
 import { DatabaseSetup } from '@/components/database-setup'
 import type { Albaran, Cedido, Ticket } from '@/lib/record-data'
-import type { Sale } from '@/lib/tpv-data'
+import type { GroupConflict, GroupEditResult, GroupPatch } from '@/components/tpv/edit-sales-group-dialog'
+import { formatFracciones, type Sale } from '@/lib/tpv-data'
 
 export default function Page() {
   const [tab, setTab] = useState<Tab>('TPV')
@@ -149,6 +150,48 @@ export default function Page() {
     await refreshData()
   }
 
+  // Acciones sobre un grupo de ventas (mismo número, serie y minuto): se aplican una a una y se refresca una sola vez.
+  async function runOnGroup(sales: Sale[], request: (sale: Sale) => Promise<Response>, fallback: string) {
+    const errors: string[] = []
+    for (const sale of sales) {
+      const response = await request(sale)
+      if (!response.ok) errors.push(`Fracción ${Number(sale.fraccion)}: ${(await response.json().catch(() => ({}))).error ?? fallback}`)
+    }
+    await refreshData()
+    if (errors.length > 0) window.alert(`${fallback}\n${errors.join('\n')}`)
+  }
+
+  function describeGroup(sales: Sale[]) {
+    const fracciones = formatFracciones(sales.map((sale) => Number(sale.fraccion)))
+    return `${sales[0].numero}/${sales[0].serie}, ${sales.length === 1 ? 'fracción' : 'fracciones'} ${fracciones}`
+  }
+
+  async function voidGroup(sales: Sale[]) {
+    if (!window.confirm(`¿Anular las ventas de ${describeGroup(sales)}? Los décimos volverán al stock.`)) return
+    await runOnGroup(sales, (sale) => fetch(`/api/sales/${encodeURIComponent(sale.id)}`, { method: 'DELETE' }), 'No se pudieron anular todas las ventas')
+  }
+
+  async function restoreGroup(sales: Sale[]) {
+    await runOnGroup(sales, (sale) => fetch(`/api/sales/${encodeURIComponent(sale.id)}/restore`, { method: 'POST' }), 'No se pudieron recuperar todas las ventas')
+  }
+
+  async function permanentlyDeleteGroup(sales: Sale[]) {
+    if (!window.confirm(`¿Borrar definitivamente las ventas anuladas de ${describeGroup(sales)}? Esta acción no se puede deshacer.`)) return
+    await runOnGroup(sales, (sale) => fetch(`/api/sales/${encodeURIComponent(sale.id)}/permanent`, { method: 'DELETE' }), 'No se pudieron borrar definitivamente todas las ventas')
+  }
+
+  async function editGroup(ids: string[], patch: GroupPatch, overwrite: boolean): Promise<GroupEditResult> {
+    const response = await fetch('/api/sales/grupo', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, ...patch, overwrite }),
+    })
+    const result = await response.json().catch(() => ({})) as { error?: string; conflicts?: GroupConflict[] }
+    if (!response.ok) return { ok: false, error: result.error ?? 'No se pudieron editar las ventas', conflicts: result.conflicts }
+    await refreshData()
+    return { ok: true }
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader active={tab} onChange={setTab} />
@@ -177,6 +220,10 @@ export default function Page() {
             onVoid={voidSale}
             onRestore={restoreSale}
             onDelete={permanentlyDeleteSale}
+            onEditGroup={editGroup}
+            onVoidMany={voidGroup}
+            onRestoreMany={restoreGroup}
+            onDeleteMany={permanentlyDeleteGroup}
           />
         )}
         {tab === 'Análisis' && <AnalysisTab tickets={tickets} sales={sales} cedidos={cedidos} />}

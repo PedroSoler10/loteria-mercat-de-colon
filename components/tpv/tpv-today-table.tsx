@@ -5,21 +5,41 @@ import { useMemo } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { filterByPeriodo, formatFechaHora, type Sale } from '@/lib/tpv-data'
+import { filterByPeriodo, formatFechaHora, formatFracciones, type Sale } from '@/lib/tpv-data'
 
 type Props = {
   sales: Sale[]
-  onEdit: (sale: Sale) => void
-  onVoid: (sale: Sale) => void
-  onRestore: (sale: Sale) => void
-  onDelete: (sale: Sale) => void
+  onEdit: (sales: Sale[]) => void
+  onVoid: (sales: Sale[]) => void
+  onRestore: (sales: Sale[]) => void
+  onDelete: (sales: Sale[]) => void
+}
+
+/** Una fila agrupa las ventas del mismo número, serie, estado y minuto. */
+type Row = { key: string; sales: Sale[] }
+
+function buildRows(sales: Sale[]): Row[] {
+  const groups = new Map<string, Sale[]>()
+  for (const sale of sales) {
+    const minute = sale.fecha.slice(0, 16)
+    const key = `${sale.numero}|${sale.serie}|${sale.estado}|${sale.sorteo}|${minute}`
+    const group = groups.get(key)
+    if (group) group.push(sale)
+    else groups.set(key, [sale])
+  }
+  return Array.from(groups, ([key, group]) => ({
+    key,
+    sales: [...group].sort((a, b) => Number(a.fraccion) - Number(b.fraccion)),
+  })).sort((a, b) => latest(b).localeCompare(latest(a)) || a.key.localeCompare(b.key))
+}
+
+function latest(row: Row) {
+  return row.sales.reduce((max, sale) => (sale.fecha > max ? sale.fecha : max), '')
 }
 
 export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Props) {
-  const todaySales = useMemo(
-    () => filterByPeriodo(sales, 'hoy').sort((a, b) => b.fecha.localeCompare(a.fecha)),
-    [sales],
-  )
+  const todaySales = useMemo(() => filterByPeriodo(sales, 'hoy'), [sales])
+  const rows = useMemo(() => buildRows(todaySales), [todaySales])
 
   return (
     <section aria-labelledby="ventas-hoy-title" className="rounded-lg border bg-card shadow-sm">
@@ -28,7 +48,7 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
           Ventas de hoy
         </h2>
         <span className="text-sm text-foreground">
-          {todaySales.length} venta{todaySales.length !== 1 && 's'} · más recientes primero
+          {todaySales.length} {todaySales.length === 1 ? 'fracción vendida' : 'fracciones vendidas'} · más recientes primero
         </span>
       </div>
 
@@ -44,18 +64,22 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
           </TableRow>
         </TableHeader>
         <TableBody>
-          {todaySales.length === 0 && (
+          {rows.length === 0 && (
             <TableRow>
               <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                 No hay ventas registradas hoy.
               </TableCell>
             </TableRow>
           )}
-          {todaySales.map((s) => {
+          {rows.map((row) => {
+            const s = row.sales[0]
             const { fecha, hora } = formatFechaHora(s.fecha)
-            const etiqueta = `${s.numero} serie ${s.serie} fracción ${s.fraccion}`
+            const fracciones = formatFracciones(row.sales.map((sale) => Number(sale.fraccion)))
+            const varias = row.sales.length > 1
+            const etiqueta = `${s.numero} serie ${s.serie} ${varias ? 'fracciones' : 'fracción'} ${fracciones}`
+            const alcance = varias ? 'las ventas del grupo' : 'la venta'
             return (
-              <TableRow key={s.id} className={s.estado === 'anulada' ? 'opacity-70' : undefined}>
+              <TableRow key={row.key} className={s.estado === 'anulada' ? 'opacity-70' : undefined}>
                 <TableCell className="font-mono tabular-nums">{fecha}</TableCell>
                 <TableCell className="font-mono tabular-nums">{hora}</TableCell>
                 <TableCell className="font-mono text-base font-semibold tabular-nums">
@@ -65,7 +89,7 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
                   </div>
                 </TableCell>
                 <TableCell className="font-mono tabular-nums">{s.serie}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums">{s.fraccion}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{fracciones}</TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
                     {s.estado === 'activa' ? (
@@ -74,9 +98,9 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
                           variant="ghost"
                           size="icon"
                           className="size-9 text-muted-foreground hover:text-foreground"
-                          aria-label={`Editar venta ${etiqueta}`}
-                          title="Editar venta"
-                          onClick={() => onEdit(s)}
+                          aria-label={`Editar ${etiqueta}`}
+                          title={`Editar ${alcance}`}
+                          onClick={() => onEdit(row.sales)}
                         >
                           <Pencil className="size-4" aria-hidden="true" />
                         </Button>
@@ -84,9 +108,9 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
                           variant="ghost"
                           size="icon"
                           className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={`Anular venta ${etiqueta}`}
-                          title="Anular venta"
-                          onClick={() => onVoid(s)}
+                          aria-label={`Anular ${etiqueta}`}
+                          title={`Anular ${alcance}`}
+                          onClick={() => onVoid(row.sales)}
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
                         </Button>
@@ -97,9 +121,9 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
                           variant="ghost"
                           size="icon"
                           className="size-9 text-primary hover:bg-primary/10"
-                          aria-label={`Recuperar venta anulada ${etiqueta}`}
-                          title="Recuperar venta anulada"
-                          onClick={() => onRestore(s)}
+                          aria-label={`Recuperar ${etiqueta} anuladas`}
+                          title={`Recuperar ${alcance} anuladas`}
+                          onClick={() => onRestore(row.sales)}
                         >
                           <RotateCcw className="size-4" aria-hidden="true" />
                         </Button>
@@ -107,9 +131,9 @@ export function TpvTodayTable({ sales, onEdit, onVoid, onRestore, onDelete }: Pr
                           variant="ghost"
                           size="icon"
                           className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={`Borrar definitivamente venta anulada ${etiqueta}`}
+                          aria-label={`Borrar definitivamente ${etiqueta} anuladas`}
                           title="Borrar definitivamente"
-                          onClick={() => onDelete(s)}
+                          onClick={() => onDelete(row.sales)}
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
                         </Button>

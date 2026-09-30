@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { EditSaleDialog } from './edit-sale-dialog'
+import { EditSalesGroupDialog, type GroupEditResult, type GroupPatch } from './edit-sales-group-dialog'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
 import { TpvTable } from './tpv-table'
 import { TpvTodayTable } from './tpv-today-table'
@@ -18,10 +19,15 @@ type Props = {
   onVoid: (sale: Sale) => void
   onRestore: (sale: Sale) => void
   onDelete: (sale: Sale) => void
+  onEditGroup: (ids: string[], patch: GroupPatch, overwrite: boolean) => Promise<GroupEditResult>
+  onVoidMany: (sales: Sale[]) => void
+  onRestoreMany: (sales: Sale[]) => void
+  onDeleteMany: (sales: Sale[]) => void
 }
 
-export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete }: Props) {
+export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete, onEditGroup, onVoidMany, onRestoreMany, onDeleteMany }: Props) {
   const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null)
+  const [groupToEdit, setGroupToEdit] = useState<Sale[] | null>(null)
   const [saleMode, setSaleMode] = useState<SaleMode>('fraccion')
 
   function findAvailableTickets(code: string, mode: SaleMode) {
@@ -77,9 +83,16 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
   return (
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
-      <TpvTodayTable sales={sales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
+      <TpvTodayTable
+        sales={sales}
+        onEdit={setGroupToEdit}
+        onVoid={onVoidMany}
+        onRestore={onRestoreMany}
+        onDelete={onDeleteMany}
+      />
       <TpvTable sales={sales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
       <EditSaleDialog sale={saleToEdit} onClose={() => setSaleToEdit(null)} onSave={onEdit} />
+      <EditSalesGroupDialog sales={groupToEdit} onClose={() => setGroupToEdit(null)} onSave={onEditGroup} />
     </div>
   )
 }
