@@ -1,70 +1,15 @@
 'use client'
 
-import { Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { filterByRange, formatFechaHora, formatFracciones, formatSeries, rangeBounds, toDateInput, type RangoVentas, type Sale } from '@/lib/tpv-data'
+import { filterByRange, rangeBounds, toDateInput, type RangoVentas, type Sale } from '@/lib/tpv-data'
+import { SaleRow, SaleRowsHeader, buildRows, type SaleGroupActions } from './tpv-sale-rows'
 
-type Props = {
-  sales: Sale[]
-  onEdit: (sales: Sale[]) => void
-  onVoid: (sales: Sale[]) => void
-  onRestore: (sales: Sale[]) => void
-  onDelete: (sales: Sale[]) => void
-}
-
-/**
- * Una fila agrupa las ventas del mismo número, serie, estado y minuto.
- * Además, las series completas (fracciones 1 a 10) del mismo número, estado y minuto se juntan en una sola fila.
- */
-type Row = { key: string; sales: Sale[] }
-
-const FRACCIONES_SERIE_COMPLETA = 10
-
-function isCompleteSeries(group: Sale[]) {
-  const fractions = new Set(group.map((sale) => Number(sale.fraccion)))
-  return group.length === FRACCIONES_SERIE_COMPLETA && Array.from({ length: FRACCIONES_SERIE_COMPLETA }, (_, index) => index + 1).every((n) => fractions.has(n))
-}
-
-function buildRows(sales: Sale[]): Row[] {
-  const groups = new Map<string, Sale[]>()
-  for (const sale of sales) {
-    const minute = sale.fecha.slice(0, 16)
-    const key = `${sale.numero}|${sale.serie}|${sale.estado}|${sale.sorteo}|${minute}`
-    const group = groups.get(key)
-    if (group) group.push(sale)
-    else groups.set(key, [sale])
-  }
-
-  const rows: Row[] = []
-  const completeByMinute = new Map<string, { key: string; sales: Sale[] }[]>()
-  for (const [key, group] of groups) {
-    const ordered = [...group].sort((a, b) => Number(a.fraccion) - Number(b.fraccion))
-    if (isCompleteSeries(ordered)) {
-      const first = ordered[0]
-      const minuteKey = `${first.numero}|${first.estado}|${first.sorteo}|${first.fecha.slice(0, 16)}`
-      const bucket = completeByMinute.get(minuteKey)
-      if (bucket) bucket.push({ key, sales: ordered })
-      else completeByMinute.set(minuteKey, [{ key, sales: ordered }])
-    } else {
-      rows.push({ key, sales: ordered })
-    }
-  }
-  for (const [minuteKey, bucket] of completeByMinute) {
-    const ordered = [...bucket].sort((a, b) => a.key.localeCompare(b.key))
-    rows.push({ key: ordered.length > 1 ? `series|${minuteKey}` : ordered[0].key, sales: ordered.flatMap((item) => item.sales) })
-  }
-  return rows.sort((a, b) => latest(b).localeCompare(latest(a)) || a.key.localeCompare(b.key))
-}
-
-function latest(row: Row) {
-  return row.sales.reduce((max, sale) => (sale.fecha > max ? sale.fecha : max), '')
-}
+type Props = { sales: Sale[] } & SaleGroupActions
 
 const RANGOS: { value: RangoVentas; label: string }[] = [
   { value: 'hoy', label: 'Hoy' },
@@ -123,16 +68,7 @@ export function TpvPeriodTable({ sales, onEdit, onVoid, onRestore, onDelete }: P
       </div>
 
       <Table className="min-w-[720px] table-auto text-base">
-        <TableHeader>
-          <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead>Fecha</TableHead>
-            <TableHead>Hora</TableHead>
-            <TableHead>Número</TableHead>
-            <TableHead>Serie</TableHead>
-            <TableHead className="text-right">Fracción</TableHead>
-            <TableHead className="text-right">Acción</TableHead>
-          </TableRow>
-        </TableHeader>
+        <SaleRowsHeader />
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
@@ -141,80 +77,9 @@ export function TpvPeriodTable({ sales, onEdit, onVoid, onRestore, onDelete }: P
               </TableCell>
             </TableRow>
           )}
-          {rows.map((row) => {
-            const s = row.sales[0]
-            const { fecha, hora } = formatFechaHora(s.fecha)
-            const fracciones = formatFracciones(row.sales.map((sale) => Number(sale.fraccion)))
-            const series = formatSeries(row.sales.map((sale) => Number(sale.serie)))
-            const varias = row.sales.length > 1
-            const etiqueta = `${s.numero} ${series.includes('-') || series.includes(',') ? 'series' : 'serie'} ${series} ${varias ? 'fracciones' : 'fracción'} ${fracciones}`
-            const alcance = varias ? 'las ventas del grupo' : 'la venta'
-            return (
-              <TableRow key={row.key} className={s.estado === 'anulada' ? 'opacity-70' : undefined}>
-                <TableCell className="font-mono tabular-nums">{fecha}</TableCell>
-                <TableCell className="font-mono tabular-nums">{hora}</TableCell>
-                <TableCell className="font-mono text-base font-semibold tabular-nums">
-                  <div className="flex items-center gap-2">
-                    {s.numero}
-                    {s.estado === 'anulada' && <Badge variant="destructive">Anulada</Badge>}
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono tabular-nums">{series}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums">{fracciones}</TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    {s.estado === 'activa' ? (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 text-muted-foreground hover:text-foreground"
-                          aria-label={`Editar ${etiqueta}`}
-                          title={`Editar ${alcance}`}
-                          onClick={() => onEdit(row.sales)}
-                        >
-                          <Pencil className="size-4" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={`Anular ${etiqueta}`}
-                          title={`Anular ${alcance}`}
-                          onClick={() => onVoid(row.sales)}
-                        >
-                          <Trash2 className="size-4" aria-hidden="true" />
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 text-primary hover:bg-primary/10"
-                          aria-label={`Recuperar ${etiqueta} anuladas`}
-                          title={`Recuperar ${alcance} anuladas`}
-                          onClick={() => onRestore(row.sales)}
-                        >
-                          <RotateCcw className="size-4" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={`Borrar definitivamente ${etiqueta} anuladas`}
-                          title="Borrar definitivamente"
-                          onClick={() => onDelete(row.sales)}
-                        >
-                          <Trash2 className="size-4" aria-hidden="true" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            )
-          })}
+          {rows.map((group) => (
+            <SaleRow key={group.key} group={group} onEdit={onEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
+          ))}
         </TableBody>
       </Table>
     </section>

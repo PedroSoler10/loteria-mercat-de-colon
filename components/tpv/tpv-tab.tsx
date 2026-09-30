@@ -1,10 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { EditSaleDialog } from './edit-sale-dialog'
 import { EditSalesGroupDialog, type GroupEditResult, type GroupPatch } from './edit-sales-group-dialog'
+import { TpvHistoryTable } from './tpv-history-table'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
-import { TpvTable } from './tpv-table'
 import { TpvPeriodTable } from './tpv-period-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
@@ -15,18 +14,13 @@ type Props = {
   sales: Sale[]
   onTicketsChange: (next: Ticket[]) => void
   onSale: (ids: string[]) => void
-  onEdit: (id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) => boolean | Promise<boolean>
-  onVoid: (sale: Sale) => void
-  onRestore: (sale: Sale) => void
-  onDelete: (sale: Sale) => void
   onEditGroup: (ids: string[], patch: GroupPatch, overwrite: boolean) => Promise<GroupEditResult>
   onVoidMany: (sales: Sale[]) => void
   onRestoreMany: (sales: Sale[]) => void
   onDeleteMany: (sales: Sale[]) => void
 }
 
-export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid, onRestore, onDelete, onEditGroup, onVoidMany, onRestoreMany, onDeleteMany }: Props) {
-  const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null)
+export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEditGroup, onVoidMany, onRestoreMany, onDeleteMany }: Props) {
   const [groupToEdit, setGroupToEdit] = useState<Sale[] | null>(null)
   const [saleMode, setSaleMode] = useState<SaleMode>('fraccion')
 
@@ -90,8 +84,13 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
         onRestore={onRestoreMany}
         onDelete={onDeleteMany}
       />
-      <TpvTable sales={sales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
-      <EditSaleDialog sale={saleToEdit} onClose={() => setSaleToEdit(null)} onSave={onEdit} />
+      <TpvHistoryTable
+        sales={sales}
+        onEdit={setGroupToEdit}
+        onVoid={onVoidMany}
+        onRestore={onRestoreMany}
+        onDelete={onDeleteMany}
+      />
       <EditSalesGroupDialog sales={groupToEdit} onClose={() => setGroupToEdit(null)} onSave={onEditGroup} />
     </div>
   )

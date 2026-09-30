@@ -113,43 +113,6 @@ export default function Page() {
     return { error: undefined, salesCount: undefined }
   }
 
-  async function editSale(id: string, patch: Pick<Sale, 'fecha' | 'precio' | 'numero' | 'serie' | 'fraccion'>) {
-    const response = await fetch(`/api/sales/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    })
-    if (!response.ok) return false
-    await refreshData()
-    return true
-  }
-
-  async function voidSale(sale: Sale) {
-    if (!window.confirm(`¿Anular la venta del número ${sale.numero}? El décimo volverá al stock.`)) return
-    const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}`, { method: 'DELETE' })
-    if (!response.ok) return
-    await refreshData()
-  }
-
-  async function restoreSale(sale: Sale) {
-    const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}/restore`, { method: 'POST' })
-    if (!response.ok) {
-      window.alert((await response.json()).error ?? 'No se pudo revertir la venta')
-      return
-    }
-    await refreshData()
-  }
-
-  async function permanentlyDeleteSale(sale: Sale) {
-    if (!window.confirm(`¿Borrar definitivamente la venta anulada del número ${sale.numero}? Esta acción no se puede deshacer.`)) return
-    const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}/permanent`, { method: 'DELETE' })
-    if (!response.ok) {
-      window.alert((await response.json()).error ?? 'No se pudo borrar definitivamente la venta')
-      return
-    }
-    await refreshData()
-  }
-
   // Acciones sobre un grupo de ventas (mismo número, serie y minuto): se aplican una a una y se refresca una sola vez.
   async function runOnGroup(sales: Sale[], request: (sale: Sale) => Promise<Response>, fallback: string) {
     const errors: string[] = []
@@ -218,10 +181,6 @@ export default function Page() {
             sales={sales}
             onTicketsChange={setTickets}
             onSale={registerSale}
-            onEdit={editSale}
-            onVoid={voidSale}
-            onRestore={restoreSale}
-            onDelete={permanentlyDeleteSale}
             onEditGroup={editGroup}
             onVoidMany={voidGroup}
             onRestoreMany={restoreGroup}
