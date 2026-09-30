@@ -150,31 +150,51 @@ export function sumSales(list: Sale[]) {
 
 export const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' })
 
-/** Rango legible de fracciones: [1,2,3,5] -> "1-3, 5". */
-export function formatFracciones(fracciones: number[]) {
-  const sorted = [...new Set(fracciones)].sort((a, b) => a - b)
+/** Rango legible de números: [1,2,3,5] -> "1-3, 5". Con `width` se rellenan con ceros (series: "133-147"). */
+function formatRangos(values: number[], width = 0) {
+  const sorted = [...new Set(values)].sort((a, b) => a - b)
+  const text = (n: number) => String(n).padStart(width, '0')
   const parts: string[] = []
   for (let i = 0; i < sorted.length; ) {
     let j = i
     while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j += 1
-    parts.push(j > i ? `${sorted[i]}-${sorted[j]}` : String(sorted[i]))
+    parts.push(j > i ? `${text(sorted[i])}-${text(sorted[j])}` : text(sorted[i]))
     i = j + 1
   }
   return parts.join(', ')
 }
 
-/** Interpreta "1-10", "3" o "1-3, 5" como lista de fracciones; devuelve null si no es válido. */
-export function parseFracciones(text: string) {
+export const SERIE_DIGITOS = 3
+
+export function formatFracciones(fracciones: number[]) {
+  return formatRangos(fracciones)
+}
+
+export function formatSeries(series: number[]) {
+  return formatRangos(series, SERIE_DIGITOS)
+}
+
+/** Interpreta "1-10", "3" o "1-3, 5" como lista de números; devuelve null si no es válido. */
+function parseRangos(text: string, maxDigits: number, min: number) {
   const result = new Set<number>()
+  const pattern = new RegExp(`^(\\d{1,${maxDigits}})(?:-(\\d{1,${maxDigits}}))?$`)
   for (const part of text.split(/[,;\s]+/).filter(Boolean)) {
-    const match = /^(\d{1,2})(?:-(\d{1,2}))?$/.exec(part)
+    const match = pattern.exec(part)
     if (!match) return null
     const from = Number(match[1])
     const to = match[2] === undefined ? from : Number(match[2])
-    if (from < 1 || to < from) return null
+    if (from < min || to < from) return null
     for (let n = from; n <= to; n += 1) result.add(n)
   }
   return result.size > 0 ? [...result].sort((a, b) => a - b) : null
+}
+
+export function parseFracciones(text: string) {
+  return parseRangos(text, 2, 1)
+}
+
+export function parseSeries(text: string) {
+  return parseRangos(text, SERIE_DIGITOS, 0)
 }
 
 /** "30/09/2026 11:50" */

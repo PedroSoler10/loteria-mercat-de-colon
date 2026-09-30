@@ -9,7 +9,7 @@ import { AnalysisTab } from '@/components/analysis-tab'
 import { DatabaseSetup } from '@/components/database-setup'
 import type { Albaran, Cedido, Ticket } from '@/lib/record-data'
 import type { GroupConflict, GroupEditResult, GroupPatch } from '@/components/tpv/edit-sales-group-dialog'
-import { formatFracciones, type Sale } from '@/lib/tpv-data'
+import { formatFracciones, formatSeries, type Sale } from '@/lib/tpv-data'
 
 export default function Page() {
   const [tab, setTab] = useState<Tab>('TPV')
@@ -163,7 +163,9 @@ export default function Page() {
 
   function describeGroup(sales: Sale[]) {
     const fracciones = formatFracciones(sales.map((sale) => Number(sale.fraccion)))
-    return `${sales[0].numero}/${sales[0].serie}, ${sales.length === 1 ? 'fracción' : 'fracciones'} ${fracciones}`
+    const series = formatSeries(sales.map((sale) => Number(sale.serie)))
+    const variasSeries = new Set(sales.map((sale) => sale.serie)).size > 1
+    return `${sales[0].numero}, ${variasSeries ? 'series' : 'serie'} ${series}, ${sales.length === 1 ? 'fracción' : 'fracciones'} ${fracciones} (${sales.length} ${sales.length === 1 ? 'venta' : 'ventas'})`
   }
 
   async function voidGroup(sales: Sale[]) {

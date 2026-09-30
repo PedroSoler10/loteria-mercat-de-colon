@@ -6,7 +6,7 @@ type GroupPatch = {
   ids?: string[]
   fecha?: string
   numero?: string
-  serie?: string
+  series?: number[]
   fracciones?: number[]
   overwrite?: boolean
 }
@@ -19,10 +19,15 @@ class GroupConflictError extends Error {
   }
 }
 
+function validNumbers(values: number[] | undefined, min: number, max: number) {
+  return !values || (values.length > 0 && values.every((n) => Number.isInteger(n) && n >= min && n <= max))
+}
+
 /**
- * Edita a la vez un grupo de ventas activas del mismo número y serie vendidas en el mismo minuto:
- * fecha y hora, número, serie y rango de fracciones.
- * Las fracciones que se quitan del rango se anulan (reversible) y las que se añaden se registran como vendidas.
+ * Edita a la vez un grupo de ventas activas del mismo número vendidas en el mismo minuto (una o varias series):
+ * fecha y hora, número, series y fracciones.
+ * Las series antiguas y nuevas se emparejan por orden. Lo que sobra de las antiguas o de las fracciones se anula
+ * (reversible) y lo que se añade se registra como vendido.
  */
 export async function PATCH(request: Request) {
   const patch = (await request.json()) as GroupPatch
@@ -30,10 +35,10 @@ export async function PATCH(request: Request) {
   if (ids.length === 0) return Response.json({ error: 'No se han recibido ventas' }, { status: 400 })
   const newDate = patch.fecha ? new Date(patch.fecha) : null
   if (newDate && Number.isNaN(newDate.getTime())) return Response.json({ error: 'La fecha no es válida' }, { status: 400 })
-  const requested = patch.fracciones ? [...new Set(patch.fracciones)].sort((a, b) => a - b) : null
-  if (requested && (requested.length === 0 || requested.some((n) => !Number.isInteger(n) || n < 1 || n > 99))) {
-    return Response.json({ error: 'Las fracciones indicadas no son válidas' }, { status: 400 })
+  if (!validNumbers(patch.fracciones, 1, 99) || !validNumbers(patch.series, 0, 999)) {
+    return Response.json({ error: 'Las series o fracciones indicadas no son válidas' }, { status: 400 })
   }
+  const sourceIds = new Set(ids)
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -42,61 +47,91 @@ export async function PATCH(request: Request) {
       if (sources.some((sale) => sale.estado !== 'activa')) throw new Error('Solo se pueden editar ventas activas')
 
       const first = sources[0].boleto
-      const width = first.fraccion.length
       const numero = patch.numero?.trim() || first.numeroJugado
-      const serie = patch.serie?.trim() || first.serie
-      const oldFractions = sources.map((sale) => sale.boleto.fraccion)
-      const newFractions = requested ? requested.map((n) => String(n).padStart(width, '0')) : [...oldFractions]
+      const serieWidth = first.serie.length
+      const fraccionWidth = first.fraccion.length
+      const pad = (n: number, width: number) => String(n).padStart(width, '0')
 
-      const kept = sources.filter((sale) => newFractions.includes(sale.boleto.fraccion))
-      const dropped = sources.filter((sale) => !newFractions.includes(sale.boleto.fraccion))
-      const added = newFractions.filter((fraccion) => !oldFractions.includes(fraccion))
+      const oldSeries = [...new Set(sources.map((sale) => sale.boleto.serie))].sort()
+      const oldFractions = [...new Set(sources.map((sale) => sale.boleto.fraccion))].sort()
+      const newSeries = patch.series ? [...new Set(patch.series)].sort((a, b) => a - b).map((n) => pad(n, serieWidth)) : oldSeries
+      const newFractions = patch.fracciones ? [...new Set(patch.fracciones)].sort((a, b) => a - b).map((n) => pad(n, fraccionWidth)) : oldFractions
 
-      const moves: { sourceId: string | null; seconds: [number, number]; targetId: string; existing: boolean }[] = []
+      type Item = { sourceId: string | null; serie: string; fraccion: string; fecha: Date }
+      const items: Item[] = []
+      const dropped: string[] = []
+      const total = Math.max(oldSeries.length, newSeries.length)
+      for (let index = 0; index < total; index += 1) {
+        const oldSerie = oldSeries[index]
+        const newSerie = newSeries[index]
+        const oldSales = oldSerie ? sources.filter((sale) => sale.boleto.serie === oldSerie) : []
+        for (const sale of oldSales) {
+          if (newSerie && newFractions.includes(sale.boleto.fraccion)) {
+            items.push({ sourceId: sale.idBoleto, serie: newSerie, fraccion: sale.boleto.fraccion, fecha: sale.fechaHoraVenta })
+          } else {
+            dropped.push(sale.idBoleto)
+          }
+        }
+        if (newSerie) {
+          const present = new Set(oldSales.map((sale) => sale.boleto.fraccion))
+          for (const fraccion of newFractions) {
+            if (!present.has(fraccion)) items.push({ sourceId: null, serie: newSerie, fraccion, fecha: newDate ?? sources[0].fechaHoraVenta })
+          }
+        }
+      }
+      if (items.length === 0) throw new Error('No queda ninguna fracción por vender')
+
+      const droppedSet = new Set(dropped)
+      const targets: { item: Item; targetId: string }[] = []
       const conflicts: Conflict[] = []
-      const plan = [
-        ...kept.map((sale) => ({ sourceId: sale.idBoleto, fraccion: sale.boleto.fraccion, seconds: [sale.fechaHoraVenta.getSeconds(), sale.fechaHoraVenta.getMilliseconds()] as [number, number] })),
-        ...added.map((fraccion) => ({ sourceId: null, fraccion, seconds: [0, 0] as [number, number] })),
-      ]
-      for (const item of plan) {
+      const overwrittenIds = new Set<string>()
+      for (const item of items) {
         const target = await tx.boleto.findFirst({
-          where: { idSorteo: first.idSorteo, numeroJugado: numero, serie, fraccion: item.fraccion },
+          where: { idSorteo: first.idSorteo, numeroJugado: numero, serie: item.serie, fraccion: item.fraccion },
         })
-        if (!target) throw new Error(`El boleto ${numero}/${serie}/${item.fraccion} no existe`)
-        const existing = target.idBoleto !== item.sourceId
+        if (!target) throw new Error(`El boleto ${numero}/${item.serie}/${item.fraccion} no existe`)
+        // Una venta del propio grupo no es un conflicto: se mueve junto con las demás (salvo si se iba a anular).
+        const existing = target.idBoleto !== item.sourceId && (!sourceIds.has(target.idBoleto) || droppedSet.has(target.idBoleto))
           ? await tx.venta.findUnique({ where: { idBoleto: target.idBoleto } })
           : null
         if (existing) {
-          conflicts.push({ fecha: existing.fechaHoraVenta.toISOString(), numero, serie, fraccion: target.fraccion, estado: existing.estado })
+          overwrittenIds.add(target.idBoleto)
+          conflicts.push({ fecha: existing.fechaHoraVenta.toISOString(), numero, serie: item.serie, fraccion: target.fraccion, estado: existing.estado })
         }
-        moves.push({ sourceId: item.sourceId, seconds: item.seconds, targetId: target.idBoleto, existing: Boolean(existing) })
+        targets.push({ item, targetId: target.idBoleto })
       }
-
       if (conflicts.length > 0 && !patch.overwrite) throw new GroupConflictError(conflicts)
 
-      // Primero se liberan las ventas que se sobrescriben y las fracciones quitadas; después se mueven o crean las demás.
-      for (const move of moves) {
-        if (move.existing) await tx.venta.delete({ where: { idBoleto: move.targetId } })
+      // 1) Se liberan las ventas sobrescritas y las que cambian de boleto; 2) se anulan las fracciones o series quitadas;
+      // 3) se registran las ventas en su sitio definitivo (así las series pueden desplazarse sin chocar entre sí).
+      for (const { item, targetId } of targets) {
+        if (overwrittenIds.has(targetId)) await tx.venta.deleteMany({ where: { idBoleto: targetId } })
+        if (item.sourceId && item.sourceId !== targetId) await tx.venta.deleteMany({ where: { idBoleto: item.sourceId } })
       }
-      for (const sale of dropped) {
+      for (const id of dropped.filter((droppedId) => !overwrittenIds.has(droppedId))) {
         await tx.venta.update({
-          where: { idBoleto: sale.idBoleto },
-          data: { estado: 'anulada', fechaHoraAnulacion: new Date(), motivoAnulacion: 'Fracción quitada al editar el rango desde TPV' },
+          where: { idBoleto: id },
+          data: { estado: 'anulada', fechaHoraAnulacion: new Date(), motivoAnulacion: 'Fracción quitada al editar el grupo desde TPV' },
         })
       }
-      for (const move of moves) {
-        const fecha = newDate ? new Date(newDate) : null
-        fecha?.setSeconds(move.seconds[0], move.seconds[1])
-        if (move.sourceId === null) {
-          await tx.venta.create({ data: { idBoleto: move.targetId, fechaHoraVenta: fecha ?? new Date(), estado: 'activa' } })
-          continue
+      for (const { item, targetId } of targets) {
+        const moved = item.sourceId !== null && item.sourceId !== targetId
+        const created = item.sourceId === null
+        const fecha = new Date(newDate ?? item.fecha)
+        // Se conservan los segundos de cada fracción para no alterar el orden original.
+        if (newDate && !created) fecha.setSeconds(item.fecha.getSeconds(), item.fecha.getMilliseconds())
+        if (moved || created) {
+          await tx.venta.create({ data: { idBoleto: targetId, fechaHoraVenta: fecha, estado: 'activa' } })
+        } else if (newDate) {
+          await tx.venta.update({ where: { idBoleto: targetId }, data: { fechaHoraVenta: fecha } })
         }
-        const data: { fechaHoraVenta?: Date; idBoleto?: string } = {}
-        if (fecha) data.fechaHoraVenta = fecha
-        if (move.targetId !== move.sourceId) data.idBoleto = move.targetId
-        if (Object.keys(data).length > 0) await tx.venta.update({ where: { idBoleto: move.sourceId }, data })
       }
-      return { updated: kept.length, added: added.length, annulled: dropped.length, overwritten: conflicts.length }
+      return {
+        updated: targets.filter(({ item }) => item.sourceId !== null).length,
+        added: targets.filter(({ item }) => item.sourceId === null).length,
+        annulled: dropped.length,
+        overwritten: conflicts.length,
+      }
     })
     return Response.json(result)
   } catch (error) {

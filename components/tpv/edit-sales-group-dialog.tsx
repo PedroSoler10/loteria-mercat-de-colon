@@ -13,11 +13,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatFecha, formatFracciones, parseFracciones, type Sale } from '@/lib/tpv-data'
+import { formatFecha, formatFracciones, formatSeries, parseFracciones, parseSeries, type Sale } from '@/lib/tpv-data'
 
 export type GroupConflict = { fecha: string; numero: string; serie: string; fraccion: string; estado: string }
 
-export type GroupPatch = { fecha: string; numero: string; serie: string; fracciones: number[] }
+export type GroupPatch = { fecha: string; numero: string; series: number[]; fracciones: number[] }
 
 export type GroupEditResult =
   | { ok: true }
@@ -50,7 +50,7 @@ export function EditSalesGroupDialog({ sales, onClose, onSave }: Props) {
     if (sales && sales.length > 0) {
       setFecha(toLocalInput(sales[0].fecha))
       setNumero(sales[0].numero)
-      setSerie(sales[0].serie)
+      setSerie(formatSeries(sales.map((sale) => Number(sale.serie))))
       setFracciones(formatFracciones(sales.map((sale) => Number(sale.fraccion))))
       setConflicts([])
       setError('')
@@ -59,7 +59,11 @@ export function EditSalesGroupDialog({ sales, onClose, onSave }: Props) {
   }, [sales])
 
   const parsed = parseFracciones(fracciones)
-  const valid = fecha !== '' && numero.trim() !== '' && serie.trim() !== '' && parsed !== null
+  const parsedSeries = parseSeries(serie)
+  const originalSeries = useMemo(() => (sales ? [...new Set(sales.map((sale) => Number(sale.serie)))] : []), [sales])
+  const seriesRemoved = parsedSeries ? originalSeries.filter((n, index) => index >= parsedSeries.length) : []
+  const seriesAdded = parsedSeries ? parsedSeries.filter((n, index) => index >= originalSeries.length) : []
+  const valid = fecha !== '' && numero.trim() !== '' && parsedSeries !== null && parsed !== null
   const removed = parsed ? original.filter((n) => !parsed.includes(n)) : []
   const added = parsed ? parsed.filter((n) => !original.includes(n)) : []
 
@@ -69,11 +73,11 @@ export function EditSalesGroupDialog({ sales, onClose, onSave }: Props) {
   }
 
   async function save(overwrite: boolean) {
-    if (!sales || !valid || !parsed || saving) return
+    if (!sales || !valid || !parsed || !parsedSeries || saving) return
     setSaving(true)
     const result = await onSave(
       sales.map((sale) => sale.id),
-      { fecha: new Date(fecha).toISOString(), numero: numero.trim(), serie: serie.trim(), fracciones: parsed },
+      { fecha: new Date(fecha).toISOString(), numero: numero.trim(), series: parsedSeries, fracciones: parsed },
       overwrite,
     )
     setSaving(false)
@@ -107,9 +111,27 @@ export function EditSalesGroupDialog({ sales, onClose, onSave }: Props) {
               <Input id="edit-group-numero" inputMode="numeric" value={numero} onChange={(e) => { setNumero(e.target.value.replace(/\D/g, '')); edited() }} className="h-10 font-mono tabular-nums" />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-group-serie">Serie</Label>
-              <Input id="edit-group-serie" inputMode="numeric" value={serie} onChange={(e) => { setSerie(e.target.value.replace(/\D/g, '')); edited() }} className="h-10 font-mono tabular-nums" />
+              <Label htmlFor="edit-group-serie">{originalSeries.length > 1 ? 'Series' : 'Serie'}</Label>
+              <Input
+                id="edit-group-serie"
+                value={serie}
+                onChange={(e) => { setSerie(e.target.value.replace(/[^\d\-, ]/g, '')); edited() }}
+                placeholder="Ej. 133 o 133-147"
+                aria-invalid={parsedSeries === null}
+                className="h-10 font-mono tabular-nums"
+              />
             </div>
+            {(parsedSeries === null || originalSeries.length > 1 || seriesAdded.length > 0) && (
+              <p className={parsedSeries === null ? 'col-span-2 -mt-1 text-xs text-destructive' : 'col-span-2 -mt-1 text-xs text-muted-foreground'}>
+                {parsedSeries === null
+                  ? 'Escribe una serie (133), un rango (133-147) o una lista (133-135, 140).'
+                  : <>
+                      Las series se sustituyen por orden.
+                      {seriesAdded.length > 0 && <> Se registrarán como vendidas las series nuevas: {formatSeries(parsedSeries.slice(originalSeries.length))}.</>}
+                      {seriesRemoved.length > 0 && <> Se anularán (podrás recuperarlas): {formatSeries(originalSeries.slice(parsedSeries.length))}.</>}
+                    </>}
+              </p>
+            )}
             <div className="col-span-2 flex flex-col gap-1.5">
               <Label htmlFor="edit-group-fracciones">Fracciones</Label>
               <Input
@@ -144,10 +166,10 @@ export function EditSalesGroupDialog({ sales, onClose, onSave }: Props) {
                 Se sobrescribirán {conflicts.length === 1 ? 'esta venta anterior' : `estas ${conflicts.length} ventas anteriores`}
               </p>
               <p className="text-muted-foreground">
-                Ya existen ventas de {numero}/{serie} en esas fracciones. Si continúas, se borrarán definitivamente y las ventas corregidas ocuparán su lugar:
+                Ya existen ventas del número {numero} en esas series y fracciones. Si continúas, se borrarán definitivamente y las ventas corregidas ocuparán su lugar:
               </p>
               <ul className="max-h-40 overflow-y-auto font-mono text-xs tabular-nums">
-                {[...conflicts].sort((a, b) => Number(a.fraccion) - Number(b.fraccion)).map((conflict) => (
+                {[...conflicts].sort((a, b) => Number(a.serie) - Number(b.serie) || Number(a.fraccion) - Number(b.fraccion)).map((conflict) => (
                   <li key={`${conflict.numero}-${conflict.serie}-${conflict.fraccion}`}>
                     {formatFecha(conflict.fecha)} · número {conflict.numero} · serie {conflict.serie} · fracción {Number(conflict.fraccion)}
                     {conflict.estado === 'anulada' ? ' (anulada)' : ''}
