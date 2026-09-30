@@ -103,8 +103,7 @@ function readEmissionDate(items: PdfTextItem[]) {
   return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))).toISOString()
 }
 
-function drawName(tipoJuego: number, drawNumber: number, year: number) {
-  if (tipoJuego === 5 && drawNumber === 102 && year === 2026) return 'Sorteo Extraordinario de Navidad 2026'
+function drawName(drawNumber: number, year: number) {
   return `Sorteo ${String(drawNumber).padStart(3, '0')} de ${year}`
 }
 
@@ -240,7 +239,7 @@ export function parseDeliveryNoteItems(text: string, items: PdfTextItem[], fileN
     tipoJuego,
     drawNumber,
     year,
-    drawName: drawName(tipoJuego, drawNumber, year),
+    drawName: drawName(drawNumber, year),
     emissionDate: readEmissionDate(items),
     ...calculateTotals(uniqueEntries),
     entries: uniqueEntries,
@@ -265,7 +264,7 @@ export function parseDeliveryNoteText(text: string, fileName = ''): ParsedDelive
     tipoJuego,
     drawNumber,
     year,
-    drawName: drawName(tipoJuego, drawNumber, year),
+    drawName: drawName(drawNumber, year),
     emissionDate: null,
     ...calculateTotals(entries),
     entries,

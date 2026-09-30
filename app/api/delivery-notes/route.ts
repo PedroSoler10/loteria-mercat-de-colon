@@ -5,9 +5,9 @@ import 'pdfjs-dist/legacy/build/pdf.worker.mjs'
 import { prisma } from '@/lib/prisma'
 import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-parser'
 import { isTemporaryOriginId } from '@/lib/origin-id'
+import { ensureSorteo } from '@/lib/sorteos-config'
 
 export const dynamic = 'force-dynamic'
-const DEFAULT_TICKET_PRICE_CENTIMOS = 2000
 
 function buildFractions(fractions?: string[]) {
   return fractions?.length
@@ -143,25 +143,9 @@ export async function POST(request: Request) {
         await tx.origen.delete({ where: { idOrigen: previousOrigin.idOrigen } })
       }
 
-      let sorteo = await tx.sorteo.findUnique({
-        where: { tipoJuego_anoCompleto_numeroSorteo: { tipoJuego: parsed.tipoJuego, anoCompleto: parsed.year, numeroSorteo: parsed.drawNumber } },
-      })
-      if (!sorteo) {
-        const idSorteo = `${parsed.tipoJuego}${parsed.year}${String(parsed.drawNumber).padStart(3, '0')}`
-        sorteo = await tx.sorteo.create({
-          data: {
-            idSorteo,
-            tipoJuego: parsed.tipoJuego,
-            anoEmision: parsed.year % 10,
-            anoCompleto: parsed.year,
-            numeroSorteo: parsed.drawNumber,
-            nombreSorteo: parsed.drawName,
-            precioCentimos: DEFAULT_TICKET_PRICE_CENTIMOS,
-          },
-        })
-      } else if (sorteo.nombreSorteo !== parsed.drawName) {
-        sorteo = await tx.sorteo.update({ where: { idSorteo: sorteo.idSorteo }, data: { nombreSorteo: parsed.drawName } })
-      }
+      // El sorteo se toma de sorteos.json; si el albarán trae uno nuevo se crea con lo leído.
+      const sorteo = await ensureSorteo(tx, { tipoJuego: parsed.tipoJuego, anoCompleto: parsed.year, numeroSorteo: parsed.drawNumber }, { createIfUnknown: true })
+      if (!sorteo) throw new Error('No se pudo determinar el sorteo del albarán')
 
       const data = parsed.entries.flatMap((entry) => {
         const tickets = []

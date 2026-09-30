@@ -1,6 +1,7 @@
 import { CedidoRecordsTable, ImportDeliveryNotes, ImportedDeliveryNotesTable } from './import-delivery-notes'
 import { ImportedSalesTable } from './imported-sales-table'
 import { ManualEntry } from './manual-entry'
+import { SorteosPanel } from './sorteos-panel'
 import type { Albaran, Cedido } from '@/lib/record-data'
 import type { Sale } from '@/lib/tpv-data'
 
@@ -23,6 +24,7 @@ export function RecordTab({ albaranes, onManualEntry, onUpdate, onDelete, onImpo
         <ImportDeliveryNotes onImported={onImported} onDatabaseImported={onDatabaseImported} databasePath={databasePath} />
         <ManualEntry onCreated={onManualEntry} />
       </div>
+      <SorteosPanel refreshKey={albaranes} />
       <ImportedDeliveryNotesTable albaranes={albaranes} onUpdate={onUpdate} onDelete={onDelete} />
       <ImportedSalesTable sales={sales} />
       <CedidoRecordsTable cedidos={cedidos} onUpdate={onUpdate} onDelete={onDelete} />

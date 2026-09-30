@@ -74,6 +74,26 @@ Tabla central de campañas y sorteos. `id_sorteo` puede ser una clave de texto c
 
 El precio se consulta desde esta tabla. La venta no permite modificarlo. `tipo_juego` permite incorporar otros juegos además de Lotería Nacional.
 
+#### Configuración de sorteos (`sorteos.json`)
+
+Los sorteos se definen en el archivo `sorteos.json`, en la carpeta de configuración (`LOTERIA_CONFIG_DIR`, junto a `database-location.json`). El nombre del juego («Lotería Nacional») no se guarda en la base de datos: se obtiene del catálogo `juegos` de ese archivo a partir de `tipo_juego`.
+
+```json
+{
+  "juegos": { "5": "Lotería Nacional" },
+  "sorteos": [
+    { "tipoJuego": 5, "anoCompleto": 2026, "numeroSorteo": 102, "nombre": "Sorteo Extraordinario de Navidad 2026", "precioCentimos": 2000 }
+  ]
+}
+```
+
+- La tabla `sorteos` se mantiene porque `boletos` y `origenes` la referencian. El archivo es la fuente editable y la tabla se sincroniza con él.
+- Si el archivo no existe se crea a partir de los sorteos de la base, y los sorteos de la base que falten en el archivo se añaden.
+- Un albarán con un sorteo que no está en el archivo lo crea con los datos leídos (nombre genérico «Sorteo NNN de AAAA» y precio por defecto de 20 €) y lo anota en el archivo.
+- El alta manual solo admite sorteos ya configurados.
+- El nombre del archivo manda sobre el de la base. El precio del archivo solo se aplica a la base mientras el sorteo no tenga ventas; desde la pestaña Registro se puede cambiar con una confirmación previa.
+- La pestaña Registro incluye el apartado «Sorteos» para añadir sorteos y modificar su nombre y precio. El juego, el año y el número no se pueden cambiar una vez creado el sorteo.
+
 ### 5.2 `origenes`
 
 Registra de dónde procede cada alta de inventario.
