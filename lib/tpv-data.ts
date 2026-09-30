@@ -104,44 +104,30 @@ export function filterByPeriodo(list: Sale[], p: Periodo, now = new Date()) {
   return list.filter((s) => new Date(s.fecha).getTime() >= from)
 }
 
-export type RangoVentas = 'hoy' | 'semana' | 'personalizado'
-
 /** "2026-09-30" en hora local, el formato de <input type="date">. */
 export function toDateInput(date = new Date()) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function startOfDateInput(value: string) {
-  const [year, month, day] = value.split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
-
-/** Límites [desde, hasta) del rango elegido; null si el rango personalizado no es válido. */
-export function rangeBounds(rango: RangoVentas, desde: string, hasta: string, now = new Date()) {
-  if (rango === 'personalizado') {
-    if (!desde || !hasta) return null
-    const from = startOfDateInput(desde)
-    const to = startOfDateInput(hasta)
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return null
-    to.setDate(to.getDate() + 1)
-    return { from, to }
-  }
-  const from = startOfPeriod(rango === 'semana' ? 'semana' : 'hoy', now)
+/** Ventas de un único día natural (hora local); `day` en formato "2026-09-30". */
+export function filterByDay(list: Sale[], day: string) {
+  const [year, month, date] = day.split('-').map(Number)
+  const from = new Date(year, month - 1, date)
+  if (Number.isNaN(from.getTime())) return []
   const to = new Date(from)
-  to.setDate(to.getDate() + (rango === 'semana' ? 7 : 1))
-  return { from, to }
-}
-
-export function filterByRange(list: Sale[], rango: RangoVentas, desde: string, hasta: string, now = new Date()) {
-  const bounds = rangeBounds(rango, desde, hasta, now)
-  if (!bounds) return []
-  const from = bounds.from.getTime()
-  const to = bounds.to.getTime()
+  to.setDate(to.getDate() + 1)
   return list.filter((s) => {
     const time = new Date(s.fecha).getTime()
-    return time >= from && time < to
+    return time >= from.getTime() && time < to.getTime()
   })
+}
+
+/** "Miércoles, 30 de septiembre de 2026" */
+export function formatDia(day: string) {
+  const [year, month, date] = day.split('-').map(Number)
+  const text = new Date(year, month - 1, date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 export function sumSales(list: Sale[]) {

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { EditSalesGroupDialog, type GroupEditResult, type GroupPatch } from './edit-sales-group-dialog'
 import { TpvHistoryTable } from './tpv-history-table'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
-import { TpvPeriodTable } from './tpv-period-table'
+import { TpvDayTable } from './tpv-day-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import type { Sale } from '@/lib/tpv-data'
@@ -77,7 +77,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEditGroup, o
   return (
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
-      <TpvPeriodTable
+      <TpvDayTable
         sales={sales}
         onEdit={setGroupToEdit}
         onVoid={onVoidMany}
