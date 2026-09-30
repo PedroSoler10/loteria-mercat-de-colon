@@ -5,7 +5,7 @@ import { EditSaleDialog } from './edit-sale-dialog'
 import { EditSalesGroupDialog, type GroupEditResult, type GroupPatch } from './edit-sales-group-dialog'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
 import { TpvTable } from './tpv-table'
-import { TpvTodayTable } from './tpv-today-table'
+import { TpvPeriodTable } from './tpv-period-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import type { Sale } from '@/lib/tpv-data'
@@ -83,7 +83,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
   return (
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
-      <TpvTodayTable
+      <TpvPeriodTable
         sales={sales}
         onEdit={setGroupToEdit}
         onVoid={onVoidMany}
