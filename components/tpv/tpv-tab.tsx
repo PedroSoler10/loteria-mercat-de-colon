@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { EditSaleDialog } from './edit-sale-dialog'
 import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
 import { TpvTable } from './tpv-table'
+import { TpvTodayTable } from './tpv-today-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import type { Sale } from '@/lib/tpv-data'
@@ -76,6 +77,7 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEdit, onVoid
   return (
     <div className="flex flex-col gap-5">
       <TpvSaleSearch mode={saleMode} onModeChange={setSaleMode} onScan={sellScanned} />
+      <TpvTodayTable sales={sales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
       <TpvTable sales={sales} onEdit={setSaleToEdit} onVoid={onVoid} onRestore={onRestore} onDelete={onDelete} />
       <EditSaleDialog sale={saleToEdit} onClose={() => setSaleToEdit(null)} onSave={onEdit} />
     </div>
