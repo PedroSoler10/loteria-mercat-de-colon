@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic'
 type Context = { params: Promise<{ id: string }> }
 type OriginPatch = {
   idOrigen?: string
-  nombre?: string
   tipoOrigen?: string
   fechaCarga?: string
   pdfPath?: string | null
@@ -16,10 +15,8 @@ export async function PATCH(request: Request, context: Context) {
   const { id } = await context.params
   const body = (await request.json()) as OriginPatch
   const idOrigen = body.idOrigen?.trim() || id
-  const nombre = body.nombre?.trim()
   const tipoOrigen = body.tipoOrigen?.trim()
   const fechaCarga = body.fechaCarga ? new Date(body.fechaCarga) : undefined
-  if (!nombre) return Response.json({ error: 'El nombre de la carga no puede estar vacío' }, { status: 400 })
   if (!tipoOrigen) return Response.json({ error: 'El tipo de origen no puede estar vacío' }, { status: 400 })
   if (!/^[-A-Za-z0-9_]+$/.test(idOrigen)) return Response.json({ error: 'El ID de origen solo puede contener letras, números, guiones y guiones bajos' }, { status: 400 })
   if (fechaCarga && Number.isNaN(fechaCarga.getTime())) return Response.json({ error: 'La fecha de carga no es válida' }, { status: 400 })
@@ -29,7 +26,6 @@ export async function PATCH(request: Request, context: Context) {
       where: { idOrigen: id },
       data: {
         idOrigen,
-        nombreAlbaran: nombre,
         tipoOrigen,
         fechaHoraCarga: fechaCarga,
         pdfPath: body.pdfPath?.trim() || null,
@@ -38,7 +34,6 @@ export async function PATCH(request: Request, context: Context) {
     })
     return Response.json({
       idOrigen: origin.idOrigen,
-      nombre: origin.nombreAlbaran,
       tipoOrigen: origin.tipoOrigen,
       fechaCarga: origin.fechaHoraCarga.toISOString(),
       pdfPath: origin.pdfPath,

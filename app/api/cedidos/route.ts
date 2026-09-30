@@ -5,14 +5,13 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const cedidos = await prisma.cedido.findMany({
     where: { origen: { deletedAt: null } },
-    include: { sorteo: true, origen: { select: { idOrigen: true, nombreAlbaran: true } } },
+    include: { sorteo: true },
     orderBy: { fechaHoraCesion: 'desc' },
   })
   return Response.json(cedidos.map((cedido) => ({
     id: cedido.idCedido,
     idBoleto: cedido.idBoleto,
     idOrigen: cedido.idOrigen,
-    nombreAlbaran: cedido.origen.nombreAlbaran,
     fecha: cedido.fechaHoraCesion.toISOString(),
     tipoJuego: String(cedido.sorteo.tipoJuego),
     sorteo: cedido.sorteo.nombreSorteo,

@@ -90,7 +90,6 @@ async function importSales(filePath) {
               idOrigen,
               idSorteo: sorteo.idSorteo,
               tipoOrigen: 'Venta importada',
-              nombreAlbaran: `Venta ${sale.codigo}`,
               fechaHoraCarga: sale.fechaHora,
               fechaEmision: sale.fechaHora,
               totalNumeros: 1,

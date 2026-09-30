@@ -1,6 +1,5 @@
 export type Albaran = {
   idOrigen: string
-  nombre: string
   nombreSorteo: string
   tipoOrigen: string
   fechaCarga: string
@@ -17,7 +16,6 @@ export type Cedido = {
   id: string
   idBoleto: string | null
   idOrigen: string
-  nombreAlbaran: string
   fecha: string
   tipoJuego: string
   sorteo: string
@@ -67,9 +65,9 @@ export type NumeroNode = {
 }
 
 export const albaranes: Albaran[] = [
-  { idOrigen: 'ALB-2026-00412', nombre: 'Navidad · Lote 1', nombreSorteo: 'Sorteo Extraordinario de Navidad 2026', tipoOrigen: 'Albarán', fechaCarga: '2026-08-28T09:14:00.000Z', fechaEmision: '2026-08-28T00:00:00.000Z', pdfPath: null, pdfChecksum: null, numerosDiferentes: 4, totalSeries: 24, totalBoletos: 240 },
-  { idOrigen: 'ALB-2026-00418', nombre: 'Navidad · Lote 2', nombreSorteo: 'Sorteo Extraordinario de Navidad 2026', tipoOrigen: 'Albarán', fechaCarga: '2026-08-30T11:42:00.000Z', fechaEmision: '2026-08-30T00:00:00.000Z', pdfPath: null, pdfChecksum: null, numerosDiferentes: 2, totalSeries: 12, totalBoletos: 120 },
-  { idOrigen: 'ALB-2026-00425', nombre: 'Reposición abonados', nombreSorteo: 'Sorteo Extraordinario de Navidad 2026', tipoOrigen: 'Albarán', fechaCarga: '2026-09-01T17:05:00.000Z', fechaEmision: '2026-09-01T00:00:00.000Z', pdfPath: null, pdfChecksum: null, numerosDiferentes: 1, totalSeries: 2, totalBoletos: 20 },
+  { idOrigen: 'ALB-2026-00412',nombreSorteo: 'Sorteo Extraordinario de Navidad 2026', tipoOrigen: 'Albarán', fechaCarga: '2026-08-28T09:14:00.000Z', fechaEmision: '2026-08-28T00:00:00.000Z', pdfPath: null, pdfChecksum: null, numerosDiferentes: 4, totalSeries: 24, totalBoletos: 240 },
+  { idOrigen: 'ALB-2026-00418',nombreSorteo: 'Sorteo Extraordinario de Navidad 2026', tipoOrigen: 'Albarán', fechaCarga: '2026-08-30T11:42:00.000Z', fechaEmision: '2026-08-30T00:00:00.000Z', pdfPath: null, pdfChecksum: null, numerosDiferentes: 2, totalSeries: 12, totalBoletos: 120 },
+  { idOrigen: 'ALB-2026-00425',nombreSorteo: 'Sorteo Extraordinario de Navidad 2026', tipoOrigen: 'Albarán', fechaCarga: '2026-09-01T17:05:00.000Z', fechaEmision: '2026-09-01T00:00:00.000Z', pdfPath: null, pdfChecksum: null, numerosDiferentes: 1, totalSeries: 2, totalBoletos: 20 },
 ]
 
 const TIPO = 'Lotería Nacional'

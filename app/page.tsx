@@ -94,7 +94,7 @@ export default function Page() {
     await refreshData()
   }
 
-  async function updateOrigin(idOrigen: string, patch: Partial<Pick<Albaran, 'idOrigen' | 'nombre' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>>) {
+  async function updateOrigin(idOrigen: string, patch: Partial<Pick<Albaran, 'idOrigen' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>>) {
     const response = await fetch(`/api/origins/${encodeURIComponent(idOrigen)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

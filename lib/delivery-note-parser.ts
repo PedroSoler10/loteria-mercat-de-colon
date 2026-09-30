@@ -8,7 +8,6 @@ export type PdfTextItem = {
 export type ParsedDeliveryNote = {
   sourceId: string
   receiverAdminId: string | null
-  name: string
   originType: string
   tipoJuego: number
   drawNumber: number
@@ -237,7 +236,6 @@ export function parseDeliveryNoteItems(text: string, items: PdfTextItem[], fileN
   return {
     sourceId,
     receiverAdminId: readReceiverAdminId(normalized, items),
-    name: `Albarán ${sourceId}`,
     originType: detectOriginType(items, detectName(normalized)),
     tipoJuego,
     drawNumber,
@@ -263,7 +261,6 @@ export function parseDeliveryNoteText(text: string, fileName = ''): ParsedDelive
   return {
     sourceId,
     receiverAdminId: readReceiverAdminId(normalized, []),
-    name: `Albarán ${sourceId}`,
     originType: detectName(normalized),
     tipoJuego,
     drawNumber,

@@ -87,7 +87,6 @@ export async function POST(request: Request) {
         const origin = await tx.origen.update({
           where: { idOrigen: existing.idOrigen },
           data: {
-            nombreAlbaran: parsed.name,
             tipoOrigen: parsed.originType,
             fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
             totalNumeros: parsed.totalNumbers,
@@ -112,7 +111,6 @@ export async function POST(request: Request) {
       })
       return Response.json({
         idOrigen: updated.idOrigen,
-        nombre: updated.nombreAlbaran,
         tipoOrigen: updated.tipoOrigen,
         updated: true,
       })
@@ -226,7 +224,6 @@ export async function POST(request: Request) {
           idSorteo: sorteo.idSorteo,
           idReceptorAdmin: parsed.receiverAdminId,
           tipoOrigen: parsed.originType,
-          nombreAlbaran: parsed.name,
           fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
           totalNumeros: parsed.totalNumbers,
           totalSeries: parsed.totalSeries,
