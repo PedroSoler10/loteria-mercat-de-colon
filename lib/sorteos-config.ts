@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Prisma } from '@prisma/client'
+import { CON_VENTA } from '@/lib/boleto-estado'
 import { getConfigDirectory } from '@/lib/database-location'
 import { prisma } from '@/lib/prisma'
 
@@ -150,7 +151,7 @@ export async function listSorteos() {
       ...sorteo,
       nombreJuego: nombreJuego(config, sorteo.tipoJuego),
       boletos: row?._count.boletos ?? 0,
-      ventas: await prisma.venta.count({ where: { boleto: { is: { idSorteo: id } } } }),
+      ventas: await prisma.boleto.count({ where: { idSorteo: id, ...CON_VENTA } }),
     }
   }))
   return { juegos: config.juegos, sorteos }
@@ -194,11 +195,26 @@ export async function ensureSorteo(tx: Tx, key: SorteoKey, options: { createIfUn
   // no tenga ventas, para no alterar retroactivamente los ingresos.
   const data: { nombreSorteo?: string; precioCentimos?: number } = {}
   if (row.nombreSorteo !== entry.nombre) data.nombreSorteo = entry.nombre
-  if (row.precioCentimos !== entry.precioCentimos && await tx.venta.count({ where: { boleto: { is: { idSorteo: id } } } }) === 0) {
+  if (row.precioCentimos !== entry.precioCentimos && await tx.boleto.count({ where: { idSorteo: id, ...CON_VENTA } }) === 0) {
     data.precioCentimos = entry.precioCentimos
   }
   if (Object.keys(data).length > 0) row = await tx.sorteo.update({ where: { idSorteo: id }, data })
   return row
+}
+
+/**
+ * Sorteo al que pertenece un código de barras. El código solo trae la última cifra del año, así que entre
+ * los sorteos configurados con ese juego, número y cifra se elige el más reciente que no sea futuro.
+ */
+export async function findSorteoForScan(tx: Tx, scan: { tipoJuego: number; numeroSorteo: number; anoEmision: number }) {
+  const config = await loadConfig(tx)
+  const candidatos = config.sorteos
+    .filter((sorteo) => sorteo.tipoJuego === scan.tipoJuego && sorteo.numeroSorteo === scan.numeroSorteo && sorteo.anoCompleto % 10 === scan.anoEmision)
+    .sort((a, b) => b.anoCompleto - a.anoCompleto)
+  if (candidatos.length === 0) return null
+  const limite = new Date().getFullYear() + 1
+  const elegido = candidatos.find((sorteo) => sorteo.anoCompleto <= limite) ?? candidatos[0]
+  return ensureSorteo(tx, elegido, { createIfUnknown: false })
 }
 
 export async function createSorteo(input: Partial<Record<keyof SorteoConfig, unknown>>) {
@@ -219,7 +235,7 @@ export async function updateSorteo(id: string, input: { nombre?: unknown; precio
   const nombre = validateNombre(input.nombre)
   const precioCentimos = validatePrecio(input.precioCentimos)
 
-  const ventas = await prisma.venta.count({ where: { boleto: { is: { idSorteo: id } } } })
+  const ventas = await prisma.boleto.count({ where: { idSorteo: id, ...CON_VENTA } })
   if (precioCentimos !== entry.precioCentimos && ventas > 0 && !input.confirmarPrecio) {
     throw new SorteoError(`El sorteo tiene ${ventas} venta${ventas === 1 ? '' : 's'} y cambiar el precio modificará sus ingresos`, 409, { requiereConfirmacion: true, ventas })
   }

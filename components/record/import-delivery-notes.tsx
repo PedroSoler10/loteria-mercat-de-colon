@@ -9,7 +9,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import type { ConflictoImportacion } from '@/lib/boleto-estado'
 import type { Albaran, Cedido } from '@/lib/record-data'
+import { ImportConflictsDialog } from './import-conflicts-dialog'
 import { formatFechaHora, eur } from '@/lib/tpv-data'
 
 type ImportProps = { onImported: () => Promise<void>; onDatabaseImported: () => Promise<void>; databasePath: string }
@@ -157,6 +159,10 @@ export function ImportDeliveryNotes({ onImported, onDatabaseImported, databasePa
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const [conflict, setConflict] = useState<{ archivo: string; conflictos: ConflictoImportacion[]; anteriores: string[]; resolve: (decisiones: Record<string, string> | null) => void } | null>(null)
+  function askConflicts(archivo: string, conflictos: ConflictoImportacion[], anteriores: string[]) {
+    return new Promise<Record<string, string> | null>((resolve) => setConflict({ archivo, conflictos, anteriores, resolve }))
+  }
   function handleFiles(files: FileList | null) {
     if (!files) return
     const supported = Array.from(files).filter((file) => {
@@ -168,21 +174,46 @@ export function ImportDeliveryNotes({ onImported, onDatabaseImported, databasePa
   async function processPending() {
     if (!pending.length) return
     setProcessing(true); setError('')
+    const done: File[] = []
     try {
       for (const file of pending) {
-        const formData = new FormData(); formData.append('file', file)
         const isDatabase = /\.(db|sqlite|sqlite3)$/i.test(file.name)
         const isSalesText = /\.txt$/i.test(file.name)
         const endpoint = isDatabase ? '/api/database' : isSalesText ? '/api/sales/import-text' : '/api/delivery-notes'
-        const response = await fetch(endpoint, { method: 'POST', body: formData })
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error ?? `No se pudo procesar ${file.name}`)
+        let decisiones: Record<string, string> | undefined
+        for (;;) {
+          const formData = new FormData(); formData.append('file', file)
+          if (decisiones) formData.append('decisiones', JSON.stringify(decisiones))
+          const response = await fetch(endpoint, { method: 'POST', body: formData })
+          const result = await response.json()
+          // Boletos del albarán con otro estado u origen: se pregunta al usuario y se vuelve a enviar con su respuesta.
+          if (response.status === 409 && Array.isArray(result.conflictos)) {
+            const elegidas = await askConflicts(file.name, result.conflictos, done.map((archivo) => archivo.name))
+            if (!elegidas) {
+              const sinImportar = pending.slice(done.length).map((archivo) => archivo.name)
+              throw new Error(`Importación cancelada: no se ha guardado nada de ${file.name}.${done.length > 0 ? ` Ya importados: ${done.map((archivo) => archivo.name).join(', ')}.` : ''}${sinImportar.length > 1 ? ` Sin importar: ${sinImportar.slice(1).join(', ')}.` : ''}`)
+            }
+            decisiones = elegidas
+            continue
+          }
+          if (!response.ok) throw new Error(result.error ?? `No se pudo procesar ${file.name}`)
+          break
+        }
+        done.push(file)
       }
       const containsDatabase = pending.some((file) => /\.(db|sqlite|sqlite3)$/i.test(file.name))
       setPending([])
       if (containsDatabase) await onDatabaseImported()
       await onImported()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo procesar el archivo') } finally { setProcessing(false) }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo procesar el archivo')
+      // Los archivos ya importados salen de la lista y la interfaz se actualiza con ellos.
+      if (done.length > 0) {
+        setPending((current) => current.filter((archivo) => !done.includes(archivo)))
+        if (done.some((archivo) => /\.(db|sqlite|sqlite3)$/i.test(archivo.name))) await onDatabaseImported()
+        await onImported()
+      }
+    } finally { setProcessing(false) }
   }
   return <section aria-labelledby="import-title" className="flex h-full flex-col gap-4 rounded-lg border bg-card p-5 shadow-sm">
     <div className="flex items-center justify-between"><h2 id="import-title" className="text-lg font-semibold">Importar datos</h2><span className="text-sm text-muted-foreground">PDF o SQLite</span></div>
@@ -196,6 +227,7 @@ export function ImportDeliveryNotes({ onImported, onDatabaseImported, databasePa
     </div>
     {pending.length > 0 && <div className="flex flex-col gap-2 rounded-md border border-accent/50 bg-accent/10 p-3"><p className="text-sm font-medium text-accent-foreground">{pending.length} archivo{pending.length === 1 ? '' : 's'} pendiente{pending.length === 1 ? '' : 's'} de procesar</p><ul className="flex flex-col gap-1">{pending.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 text-sm"><FileText className="size-4 shrink-0 text-muted-foreground" /><span className="truncate">{file.name}</span></li>)}</ul><div className="flex gap-2"><Button size="lg" className="h-11 flex-1 text-base" disabled={processing} onClick={() => void processPending()}>{processing ? 'Procesando…' : 'Procesar'}</Button><Button size="lg" variant="outline" className="h-11 text-base" disabled={processing} onClick={() => setPending([])}>Descartar</Button></div></div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {conflict && <ImportConflictsDialog archivo={conflict.archivo} conflictos={conflict.conflictos} anteriores={conflict.anteriores} onResolve={(decisiones) => { conflict.resolve(decisiones); setConflict(null) }} />}
   </section>
 }
 
@@ -213,7 +245,7 @@ export function ImportedDeliveryNotesTable({ albaranes, onUpdate, onDelete }: Ta
   const [openSeries, setOpenSeries] = useState<Set<string>>(new Set())
   const draws = useMemo<DrawGroup[]>(() => {
     const byDraw = new Map<string, Map<string, Albaran[]>>()
-    for (const origin of albaranes.filter((origin) => origin.tipoOrigen !== 'Cesión de Consignación' && origin.tipoOrigen !== 'Venta importada')) {
+    for (const origin of albaranes.filter((origin) => origin.tipoOrigen !== 'Cesión de Consignación')) {
       if (!byDraw.has(origin.nombreSorteo)) byDraw.set(origin.nombreSorteo, new Map())
       const byType = byDraw.get(origin.nombreSorteo)!
       if (!byType.has(origin.tipoOrigen)) byType.set(origin.tipoOrigen, [])

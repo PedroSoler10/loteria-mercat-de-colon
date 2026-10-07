@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma'
+import { anularVenta, liberarVenta, venderBoleto } from '@/lib/boleto-estado'
+import { toSale } from '@/lib/sale-dto'
 
 export const dynamic = 'force-dynamic'
-const DEFAULT_TICKET_PRICE_CENTIMOS = 2000
 
 type SalePatch = {
   fecha?: string
@@ -10,53 +11,32 @@ type SalePatch = {
   fraccion?: string
 }
 
-function parseTicketId(value: string) {
-  const [numeroJugado, serie, fraccion] = value.split('/')
-  if (!numeroJugado || !serie || !fraccion) return null
-  return { numeroJugado, serie, fraccion }
-}
-
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
   const patch = (await request.json()) as SalePatch
-  const targetKey = patch.numero && patch.serie && patch.fraccion
-    ? parseTicketId(`${patch.numero}/${patch.serie}/${patch.fraccion}`)
-    : null
+  const hasTarget = Boolean(patch.numero && patch.serie && patch.fraccion)
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      const current = await tx.venta.findUnique({ where: { idBoleto: id } })
-      if (!current || current.estado !== 'activa') throw new Error('La venta no existe o está anulada')
+      const current = await tx.boleto.findUnique({ where: { idBoleto: id } })
+      if (!current || current.estado !== 'vendido') throw new Error('La venta no existe o está anulada')
 
-      const data: { fechaHoraVenta?: Date; idBoleto?: string } = {}
-      if (patch.fecha) data.fechaHoraVenta = new Date(patch.fecha)
-      if (targetKey) {
-        const target = await tx.boleto.findFirst({ where: targetKey })
-        if (!target) throw new Error('El boleto indicado no existe')
-        const existing = await tx.venta.findUnique({ where: { idBoleto: target.idBoleto } })
-        if (existing?.estado === 'activa' && target.idBoleto !== id) throw new Error('El boleto indicado ya está vendido')
-        data.idBoleto = target.idBoleto
+      const fecha = patch.fecha ? new Date(patch.fecha) : current.fechaHoraVenta ?? new Date()
+      const target = hasTarget
+        ? await tx.boleto.findFirst({ where: { idSorteo: current.idSorteo, numeroJugado: patch.numero!, serie: patch.serie!, fraccion: patch.fraccion! } })
+        : current
+      if (!target) throw new Error('El boleto indicado no existe')
+
+      if (target.idBoleto === id) {
+        return tx.boleto.update({ where: { idBoleto: id }, data: { fechaHoraVenta: fecha }, include: { sorteo: true } })
       }
-
-      return tx.venta.update({
-        where: { idBoleto: id },
-        data,
-        include: { boleto: { include: { sorteo: true } } },
-      })
+      // La venta se traslada al otro boleto. Si el destino está vendido o cedido, venderBoleto lo rechaza.
+      if (target.estado === 'vendido') throw new Error('El boleto indicado ya está vendido')
+      await liberarVenta(tx, id)
+      return venderBoleto(tx, target, fecha)
     })
 
-    return Response.json({
-      id: updated.idBoleto,
-      fecha: updated.fechaHoraVenta.toISOString(),
-      tipoJuego: String(updated.boleto.sorteo.tipoJuego),
-      sorteo: updated.boleto.sorteo.nombreSorteo,
-      anio: updated.boleto.sorteo.anoCompleto,
-      numero: updated.boleto.numeroJugado,
-      serie: updated.boleto.serie,
-      fraccion: updated.boleto.fraccion,
-      precio: (updated.boleto.sorteo.precioCentimos || DEFAULT_TICKET_PRICE_CENTIMOS) / 100,
-      estado: updated.estado,
-    })
+    return Response.json(toSale(updated))
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'No se pudo editar la venta' }, { status: 409 })
   }
@@ -65,19 +45,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
   try {
-    const current = await prisma.venta.findUnique({ where: { idBoleto: id } })
-    if (!current) return Response.json({ error: 'La venta no existe' }, { status: 404 })
-    if (current.estado !== 'activa') return Response.json({ error: 'La venta ya está anulada' }, { status: 409 })
+    const current = await prisma.boleto.findUnique({ where: { idBoleto: id } })
+    if (!current || current.fechaHoraVenta === null) return Response.json({ error: 'La venta no existe' }, { status: 404 })
+    if (current.estado !== 'vendido') return Response.json({ error: 'La venta ya está anulada' }, { status: 409 })
 
-    const venta = await prisma.venta.update({
-      where: { idBoleto: id },
-      data: {
-        estado: 'anulada',
-        fechaHoraAnulacion: new Date(),
-        motivoAnulacion: 'Anulación manual desde TPV',
-      },
-    })
-    return Response.json({ id: venta.idBoleto, estado: venta.estado })
+    const boleto = await prisma.$transaction((tx) => anularVenta(tx, id, 'Anulación manual desde TPV'))
+    return Response.json({ id: boleto.idBoleto, estado: 'anulada' })
   } catch {
     return Response.json({ error: 'La venta no existe' }, { status: 404 })
   }

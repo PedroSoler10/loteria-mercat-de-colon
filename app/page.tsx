@@ -84,14 +84,28 @@ export default function Page() {
     return <DatabaseSetup onReady={completeDatabaseSetup} />
   }
 
-  async function registerSale(ids: string[]) {
+  // Devuelve los identificadores de las ventas creadas, por si hay que deshacerlas.
+  async function registerSale(ids: string[], scan?: string) {
     const response = await fetch('/api/sales', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticketIds: ids }),
+      body: JSON.stringify({ ticketIds: ids, scan }),
     })
     if (!response.ok) throw new Error((await response.json()).error ?? 'No se pudo registrar la venta')
+    const created = (await response.json()) as { id: string }[]
     await refreshData()
+    return created.map((sale) => sale.id)
+  }
+
+  // Deshacer una venta recién hecha: se anula en el servidor (queda en el historial y se puede restaurar).
+  async function undoSale(saleIds: string[]) {
+    const errors: string[] = []
+    for (const id of saleIds) {
+      const response = await fetch(`/api/sales/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!response.ok) errors.push((await response.json().catch(() => ({}))).error ?? 'No se pudo anular la venta')
+    }
+    await refreshData()
+    if (errors.length > 0) throw new Error(errors[0])
   }
 
   async function updateOrigin(idOrigen: string, patch: Partial<Pick<Albaran, 'idOrigen' | 'tipoOrigen' | 'fechaCarga' | 'pdfPath' | 'pdfChecksum'>>) {
@@ -174,12 +188,11 @@ export default function Page() {
             sales={sales}
           />
         )}
-        {tab === 'Inventario' && <InventoryTab tickets={tickets} onTicketsChange={setTickets} onSale={registerSale} />}
+        {tab === 'Inventario' && <InventoryTab tickets={tickets} onSale={registerSale} onUndoSale={undoSale} />}
         {tab === 'TPV' && (
           <TpvTab
             tickets={tickets}
             sales={sales}
-            onTicketsChange={setTickets}
             onSale={registerSale}
             onEditGroup={editGroup}
             onVoidMany={voidGroup}

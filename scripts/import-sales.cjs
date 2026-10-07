@@ -3,11 +3,6 @@ const path = require('node:path')
 const { mkdirSync } = require('node:fs')
 const { PrismaClient } = require('@prisma/client')
 
-function temporaryOriginId(prefix, date) {
-  const pad = (value) => String(value).padStart(2, '0')
-  return `${prefix}-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
-}
-
 function configureDatabase() {
   if (!process.env.DATABASE_URL) {
     mkdirSync(path.join(process.cwd(), 'data'), { recursive: true })
@@ -68,65 +63,43 @@ async function importSales(filePath) {
         })
         if (!sorteo) throw new Error(`No se encontró el sorteo del código ${sale.codigo}`)
 
-        const boleto = await tx.boleto.findFirst({
+        let target = await tx.boleto.findFirst({
           where: {
             idSorteo: sorteo.idSorteo,
             numeroJugado: sale.numeroJugado,
             serie: sale.serie,
             fraccion: sale.fraccion,
           },
-          include: { cedidos: true },
         })
-        let target = boleto
         if (!target) {
-          let originDate = sale.fechaHora
-          let idOrigen = temporaryOriginId('VENT', originDate)
-          while (await tx.origen.findUnique({ where: { idOrigen } })) {
-            originDate = new Date(originDate.getTime() + 1000)
-            idOrigen = temporaryOriginId('VENT', originDate)
-          }
-          await tx.origen.create({
-            data: {
-              idOrigen,
-              idSorteo: sorteo.idSorteo,
-              tipoOrigen: 'Venta importada',
-              fechaHoraCarga: sale.fechaHora,
-              fechaEmision: sale.fechaHora,
-              totalNumeros: 1,
-              totalSeries: 1,
-              totalBilletes: 1,
-            },
-          })
+          // El albarán de entrada aún no está cargado: el boleto se crea sin origen y se recibirá después.
           target = await tx.boleto.create({
             data: {
               idBoleto: `${sorteo.idSorteo}-${sale.numeroJugado}-${sale.serie}-${sale.fraccion}`,
               idSorteo: sorteo.idSorteo,
-              idOrigen,
+              idOrigen: null,
               numeroJugado: sale.numeroJugado,
               serie: sale.serie,
               fraccion: sale.fraccion,
               digitosControl: sale.digitosControl,
               codigoBarrasRaw: sale.codigo,
             },
-            include: { cedidos: true },
           })
         }
-        if (target.cedidos.length > 0) throw new Error(`El boleto está cedido y no se puede vender: ${sale.codigo}`)
+        if (target.estado === 'cedido') throw new Error(`El boleto está cedido y no se puede vender: ${sale.codigo}`)
 
-        const existing = await tx.venta.findUnique({ where: { idBoleto: target.idBoleto } })
-        if (existing?.estado === 'activa') {
+        // El código leído trae los dígitos de control reales, que el albarán no incluye.
+        const lectura = { digitosControl: sale.digitosControl, codigoBarrasRaw: sale.codigo }
+        if (target.estado === 'vendido') {
+          await tx.boleto.update({ where: { idBoleto: target.idBoleto }, data: lectura })
           skipped.push(sale.codigo)
           continue
         }
 
-        const venta = existing
-          ? await tx.venta.update({
-              where: { idBoleto: target.idBoleto },
-              data: { estado: 'activa', fechaHoraVenta: sale.fechaHora, fechaHoraAnulacion: null, motivoAnulacion: null },
-            })
-          : await tx.venta.create({
-              data: { idBoleto: target.idBoleto, fechaHoraVenta: sale.fechaHora },
-            })
+        const venta = await tx.boleto.update({
+          where: { idBoleto: target.idBoleto },
+          data: { estado: 'vendido', fechaHoraVenta: sale.fechaHora, fechaHoraAnulacion: null, motivoAnulacion: null, ...lectura },
+        })
         created.push({ idBoleto: venta.idBoleto, codigo: sale.codigo, fechaHora: venta.fechaHoraVenta.toISOString() })
       }
       return { created, skipped }

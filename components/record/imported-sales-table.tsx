@@ -45,7 +45,7 @@ function dayLabel(key: string) {
 }
 
 export function ImportedSalesTable({ sales }: { sales: Sale[] }) {
-  const importedSales = useMemo(() => sales.filter((sale) => sale.importada), [sales])
+  const importedSales = useMemo(() => sales.filter((sale) => sale.sinAlbaran), [sales])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const groups = useMemo(() => {
@@ -92,7 +92,7 @@ export function ImportedSalesTable({ sales }: { sales: Sale[] }) {
     <section aria-labelledby="imported-sales-title" className="flex flex-col gap-4 rounded-lg border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <h2 id="imported-sales-title" className="text-lg font-semibold">Ventas importadas</h2>
+          <h2 id="imported-sales-title" className="text-lg font-semibold">Ventas sin albarán</h2>
           <span className="text-sm text-muted-foreground">{importedSales.length} ventas</span>
         </div>
         <Button type="button" variant="outline" onClick={() => setExpanded(allExpanded ? new Set() : new Set(allKeys))}>
@@ -115,7 +115,7 @@ export function ImportedSalesTable({ sales }: { sales: Sale[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {groups.length === 0 && <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">No hay ventas importadas.</TableCell></TableRow>}
+          {groups.length === 0 && <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">No hay ventas de boletos sin albarán cargado.</TableCell></TableRow>}
           {groups.map(([draw, months]) => {
             const drawKey = draw
             const drawSales = Array.from(months.values()).flatMap((weeks) => Array.from(weeks.values()).flatMap((days) => Array.from(days.values()).flat()))
