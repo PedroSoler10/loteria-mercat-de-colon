@@ -132,10 +132,40 @@ La configuración de la ubicación de la base de datos se guarda en:
 %LOCALAPPDATA%\LoteriaMercatDeColon\database-location.json
 ```
 
+Los sorteos configurados (juegos, año, número, nombre y precio) se guardan junto a ella, en `%LOCALAPPDATA%\LoteriaMercatDeColon\sorteos.json`. Se pueden editar desde **Registro → Sorteos** y el archivo se crea solo la primera vez. Si cambia de base de datos, conserve también este archivo.
+
 Al actualizar la aplicación, se sustituye la carpeta del paquete, pero no se
 debe borrar la carpeta de datos. Las migraciones pendientes se aplican al
 arrancar. Antes de actualizar conviene copiar `loteria.db` como copia de
 seguridad.
+
+## Actualizar una base de datos con la estructura antigua
+
+Las bases creadas antes de unificar `ventas` y `cedidos` dentro de `boletos` se actualizan con las migraciones de `prisma/migrations`. Hay tres formas, de más a menos recomendable para una base importante (como la de producción):
+
+1. **Migrar una copia con el script** (la original nunca se modifica):
+
+   ```bash
+   pnpm db:migrar -- "C:\ruta\antigua.db"
+   ```
+
+   Crea `antigua.migrada.db` junto a la original, aplica las migraciones sobre esa copia y compara los totales (boletos, ventas activas y cedidos). Después abre la aplicación con la copia migrada, o impórtala desde Registro. Si la base ya tiene la estructura actual, lo indica y no hace nada.
+
+2. **Importar la base desde Registro** (arrastrando el `.db`). La aplicación guarda una copia de la base actual (`loteria.db.antes-de-importar`), migra la importada y, si la migración falla, restaura la anterior.
+
+3. **Arrancar la aplicación con la base antigua** (`pnpm dev` o `pnpm local:start`): las migraciones pendientes se aplican al arrancar.
+
+Haz siempre una copia de seguridad antes de migrar una base real.
+
+### Si la migración se detiene
+
+La migración **no decide por el usuario**. Se detiene, sin modificar nada, si un boleto figura a la vez como vendido y cedido, o cedido por varios albaranes. El mensaje indica `ABORTADO_hay_boletos_vendidos_y_cedidos…`. Para resolverlo:
+
+1. Localiza los conflictos con las consultas que hay al principio de `prisma/migrations/20260930130000_fusionar_boletos_ventas_cedidos/migration.sql`.
+2. Con la versión anterior de la aplicación, anula la venta (si en realidad es una cesión) o elimina el albarán de cesión que sobra (si en realidad es una venta). El albarán se podrá volver a importar después en la versión nueva, que preguntará qué hacer con cada boleto.
+3. Repite la migración. Si se había intentado directamente sobre la base (opción 3), antes hay que marcar la migración como no aplicada: `pnpm exec prisma migrate resolve --rolled-back 20260930130000_fusionar_boletos_ventas_cedidos`.
+
+La migración `20261007100000_construir_codigo_barras`, posterior, reconstruye el código de barras de los boletos que venían de un albarán (ver [codigo-barras-seleae.md](codigo-barras-seleae.md)).
 
 ## Resumen rápido
 
