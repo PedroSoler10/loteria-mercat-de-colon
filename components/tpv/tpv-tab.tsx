@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { EditSalesGroupDialog, type GroupEditResult, type GroupPatch } from './edit-sales-group-dialog'
 import { TpvHistoryTable } from './tpv-history-table'
-import { TpvSaleSearch, type SaleMode } from './tpv-sale-search'
+import { TpvSaleSearch, type SaleMode, type ScanResult } from './tpv-sale-search'
 import { TpvDayTable } from './tpv-day-table'
 import { ticketId, type Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
@@ -12,15 +12,15 @@ import type { Sale } from '@/lib/tpv-data'
 type Props = {
   tickets: Ticket[]
   sales: Sale[]
-  onTicketsChange: (next: Ticket[]) => void
-  onSale: (ids: string[]) => void
+  onSale: (ids: string[], scan?: string) => Promise<unknown>
+
   onEditGroup: (ids: string[], patch: GroupPatch, overwrite: boolean) => Promise<GroupEditResult>
   onVoidMany: (sales: Sale[]) => void
   onRestoreMany: (sales: Sale[]) => void
   onDeleteMany: (sales: Sale[]) => void
 }
 
-export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEditGroup, onVoidMany, onRestoreMany, onDeleteMany }: Props) {
+export function TpvTab({ tickets, sales, onSale, onEditGroup, onVoidMany, onRestoreMany, onDeleteMany }: Props) {
   const [groupToEdit, setGroupToEdit] = useState<Sale[] | null>(null)
   const [saleMode, setSaleMode] = useState<SaleMode>('fraccion')
 
@@ -64,14 +64,38 @@ export function TpvTab({ tickets, sales, onTicketsChange, onSale, onEditGroup, o
     return exactSeries.length > 0 ? exactSeries : available.filter((ticket) => ticket.numero === normalized)
   }
 
-  function sellScanned(code: string, mode: SaleMode) {
+  async function sellScanned(code: string, mode: SaleMode): Promise<ScanResult> {
+    let barcode: ReturnType<typeof parseSelaeBarcode> | null = null
+    try {
+      barcode = parseSelaeBarcode(code)
+    } catch {
+      // Sin código de barras válido solo se busca entre los boletos disponibles.
+    }
     const selected = findAvailableTickets(code, mode)
-    if (selected.length === 0) return 0
-    const ids = selected.map(ticketId)
-    onSale(ids)
-    const selectedIds = new Set(ids)
-    onTicketsChange(tickets.map((ticket) => (selectedIds.has(ticketId(ticket)) ? { ...ticket, vendido: true } : ticket)))
-    return ids.length
+    try {
+      if (selected.length > 0) {
+        // El código escaneado permite actualizar los dígitos de control de la fracción leída.
+        await onSale(selected.map(ticketId), barcode ? code : undefined)
+        return { sold: selected.length }
+      }
+      if (!barcode) return { sold: 0, message: 'Código no disponible' }
+
+      const known = tickets.find((ticket) => ticket.numero === barcode.numeroJugado && ticket.serie === barcode.serie && ticket.fraccion === barcode.fraccion)
+      if (known?.cedido) return { sold: 0, message: 'El boleto está cedido y no se puede vender' }
+      if (known?.vendido) return { sold: 0, message: 'El boleto ya está vendido' }
+      if (known) return { sold: 0, message: 'Código no disponible' }
+
+      // El boleto no está en el inventario porque su albarán aún no se ha cargado: se vende y se recibirá después.
+      // En modo serie se venden las 10 fracciones habituales (salvo las que ya existan en el inventario).
+      const existentes = new Set(tickets.filter((ticket) => ticket.numero === barcode.numeroJugado && ticket.serie === barcode.serie).map((ticket) => ticket.fraccion))
+      const fracciones = mode === 'serie'
+        ? Array.from({ length: 10 }, (_, index) => String(index + 1).padStart(2, '0')).filter((fraccion) => !existentes.has(fraccion))
+        : [barcode.fraccion]
+      await onSale(fracciones.map((fraccion) => `${barcode.numeroJugado}/${barcode.serie}/${fraccion}`), code)
+      return { sold: fracciones.length, message: `${fracciones.length} ${fracciones.length === 1 ? 'fracción vendida' : 'fracciones vendidas'} (albarán sin cargar)` }
+    } catch (error) {
+      return { sold: 0, message: error instanceof Error ? error.message : 'No se pudo registrar la venta' }
+    }
   }
 
   return (

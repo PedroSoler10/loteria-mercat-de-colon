@@ -67,13 +67,16 @@ Si ya se ejecutó `npm install` y dejó la instalación en un estado inconsisten
 
 Las migraciones pendientes se aplican automáticamente al iniciar una versión nueva.
 
+Para actualizar una base de datos con la estructura antigua (anterior a la unificación de ventas y cesiones en los boletos) sin tocar la original, use `pnpm db:migrar -- "C:\ruta\antigua.db"`; consulte [`docs/despliegue.md`](docs/despliegue.md).
+
 ### Copia de seguridad y restauración
 
 La pestaña **Registro** incluye un bloque único de **Importar datos**, desde el que puede:
 
 - Arrastrar o seleccionar PDF de albaranes y archivos `.db`, `.sqlite` o `.sqlite3`. La aplicación envía cada formato automáticamente al importador correcto.
-- Importar una base SQLite elegida desde cualquier carpeta; su contenido sustituye la base activa en `%LOCALAPPDATA%\LoteriaMercatDeColon\data\loteria.db`.
+- Importar una base SQLite elegida desde cualquier carpeta; su contenido sustituye la base activa en `%LOCALAPPDATA%\LoteriaMercatDeColon\data\loteria.db`. Si la base tiene una estructura antigua se actualiza al importarla; la base anterior se conserva como `loteria.db.antes-de-importar` y, si la actualización falla, se restaura.
 - Importar archivos `.txt` de ventas con la cabecera `Código Fecha Hora`; se registran usando el mismo proceso que `sales:import`.
+- Consultar y editar los sorteos (juego, año, número, nombre y precio) en el apartado **Sorteos**, y añadir los nuevos.
 - Descargar una copia de seguridad desde la propia aplicación.
 
 Para hacer una copia de seguridad manual:
@@ -122,18 +125,22 @@ Abra la pestaña **Registro** para cargar la información recibida.
 
 La aplicación evita duplicar un albarán ya cargado. Si se vuelve a cargar el mismo documento, recupera o actualiza el registro existente cuando corresponde.
 
-Las cesiones de consignación aparecen en la tabla **Cedidos**, separadas de las importaciones recibidas. Una cesión puede quedar registrada aunque el boleto todavía no exista en los recibidos.
+Las cesiones de consignación aparecen en la tabla **Cedidos**, separadas de las importaciones recibidas. Una cesión puede quedar registrada aunque el boleto todavía no exista en los recibidos; en ese caso se recibirá cuando se cargue su albarán de entrada.
+
+Si el albarán trae un sorteo que no está configurado, se crea con el nombre genérico «Sorteo NNN de AAAA» y el precio por defecto; puede corregirlos después en el apartado **Sorteos** de Registro.
+
+Si un albarán incluye boletos que ya tienen otro estado u otro origen, la aplicación pregunta qué hacer antes de guardar nada: en una cesión, si un boleto vendido es en realidad una venta o una cesión, o qué albarán lo cedió; en una recepción, cuál es el origen correcto. Puede aplicar la misma decisión a todos los boletos de cada grupo, decidir uno a uno o cancelar la importación, que deja todo como estaba. Un boleto vendido o cedido antes de cargar su albarán de entrada se completa con ese albarán sin perder su venta o su cesión.
 
 #### Alta manual o mediante lector
 
 Use el formulario de alta manual cuando un boleto no esté incluido en un albarán:
 
 1. Introduzca el sorteo, número, serie y fracción.
-2. Introduzca los dígitos de control si los conoce; si no, se utiliza `0000`.
+2. Introduzca los dígitos de control si los conoce; si no, se utiliza `0000`. El código de barras se construye con los datos del boleto.
 3. Para una lectura con pistola, coloque el cursor en el campo correspondiente y escanee el código.
 4. Guarde el alta.
 
-Las altas manuales y las lecturas sin albarán reciben un origen provisional. Si posteriormente se importa un albarán con los mismos datos, la aplicación puede asociar el boleto al albarán definitivo.
+Las altas manuales y las lecturas sin albarán reciben un origen provisional. Si posteriormente se importa un albarán con los mismos datos, la aplicación asocia el boleto al albarán definitivo.
 
 En las tablas de Registro puede:
 
@@ -154,12 +161,12 @@ Número
 
 La tabla distingue entre:
 
-- **Recibidos**: fracciones registradas en albaranes o altas manuales.
+- **Recibidos**: fracciones registradas en albaranes o altas manuales. Una fracción vendida o cedida antes de cargar su albarán no cuenta como recibida hasta que se cargue.
 - **Cedidos**: fracciones entregadas a otra administración.
 - **Vendidos**: fracciones con una venta activa.
 - **Disponibles**: recibidos menos cedidos menos vendidos.
 
-Utilice el buscador para localizar un número, serie o fracción. Puede expandir los niveles de la tabla y vender desde las fracciones disponibles.
+Utilice el buscador para localizar un número, serie o fracción. Puede expandir los niveles de la tabla y vender desde las fracciones disponibles. Tras una venta aparece el aviso **Deshacer**, que anula la venta (queda en el historial y se puede restaurar).
 
 ### 2.3. Registrar ventas en el TPV
 
@@ -169,6 +176,10 @@ En **TPV** puede vender mediante búsqueda manual o lector de códigos:
 2. Seleccione el boleto encontrado.
 3. Elija vender una fracción o la serie completa cuando esté disponible.
 4. Confirme la venta.
+
+Al leer el código de barras se actualizan los dígitos de control y el código de barras del boleto (ver [`docs/codigo-barras-seleae.md`](docs/codigo-barras-seleae.md)). Un boleto cedido no se puede vender.
+
+Si el boleto no está en el inventario porque su albarán aún no se ha cargado, también se puede vender escaneando su código: en modo **Fracción** se vende esa fracción y en modo **Serie** las diez fracciones habituales. Esas ventas aparecen en **Registro → Ventas sin albarán** y el boleto se completa cuando se carga su albarán.
 
 El historial transaccional muestra todas las ventas, no solo las del día. Las ventas se agrupan jerárquicamente por:
 
@@ -183,12 +194,12 @@ Cada nivel se puede expandir o contraer. También existen los botones **Expandir
 
 Desde cada venta puede:
 
-- Editar fecha, precio, número, serie o fracción.
+- Editar fecha, número, serie o fracción (el precio lo fija el sorteo y no se edita).
 - Anular una venta activa.
 - Restaurar una venta anulada.
 - Eliminar definitivamente una venta anulada.
 
-Las ventas importadas desde un archivo de texto se pueden cargar con el proceso preparado para ello. El archivo debe contener una cabecera `Código Fecha Hora` y una venta por línea.
+Las ventas de un archivo de texto se pueden cargar con el proceso preparado para ello. El archivo debe contener una cabecera `Código Fecha Hora` y una venta por línea. Un boleto cedido no se puede vender y la importación se detiene indicándolo.
 
 ### 2.4. Consultar análisis y caja
 
@@ -232,11 +243,14 @@ app/page.tsx                 Estado y navegación principal
 app/api/inventory            Inventario calculado
 app/api/sales                Ventas y operaciones del TPV
 app/api/cedidos              Cesiones
+app/api/sorteos              Sorteos configurados (sorteos.json)
+app/api/database             Importar, crear y comprobar la base de datos
 app/api/delivery-notes       Importación de albaranes PDF
 app/api/manual-entry         Altas manuales y escaneadas
 app/api/origins              Cargas y albaranes
 components/                  Interfaz React
-lib/                         Tipos y lógica compartida
+lib/                         Tipos y lógica compartida (boleto-estado.ts: ventas y cesiones;
+                             selae-barcode.ts: código de barras; sorteos-config.ts: sorteos)
 prisma/                      Schema y migraciones SQLite
 scripts/                     Arranque, importadores y empaquetado
 ```
@@ -247,17 +261,17 @@ El estado de la interfaz se coordina en `app/page.tsx`, que carga inventario, ve
 
 Prisma define principalmente:
 
-- `Sorteo`: datos del sorteo y precio unitario.
+- `Sorteo`: datos del sorteo y precio unitario. Se define en `sorteos.json` (carpeta de configuración) y la tabla se sincroniza con ese archivo.
 - `Origen`: albarán, alta manual o origen provisional.
-- `Boleto`: número, serie, fracción, dígitos de control y código de barras.
-- `Venta`: venta activa o anulada.
-- `Cedido`: fracción cedida y su relación opcional con un boleto recibido.
+- `Boleto`: número, serie, fracción, dígitos de control, código de barras y su estado (`disponible`, `vendido` o `cedido`) con los datos de su venta, anulación y cesión. Sin origen significa que aún no se ha recibido su albarán.
 
 El stock disponible se calcula como:
 
 ```text
 disponibles = recibidos - cedidos - vendidos
 ```
+
+La estructura detallada está en [`docs/estructura-base-datos.md`](docs/estructura-base-datos.md) y la del código de barras en [`docs/codigo-barras-seleae.md`](docs/codigo-barras-seleae.md).
 
 Las migraciones están en `prisma/migrations`. No deben modificarse ni eliminarse las migraciones ya aplicadas; para cambiar el esquema se debe crear una migración nueva.
 
@@ -288,7 +302,7 @@ corepack pnpm local:start
 
 `next.config.mjs` utiliza `output: 'standalone'` para generar una compilación autocontenida. `scripts/start-local.cjs` aplica las migraciones, inicia el servidor standalone y abre `http://localhost:3000`.
 
-La ubicación de datos puede cambiarse con `LOTERIA_DATA_DIR`. Si no se especifica, la instalación local utiliza:
+La ubicación de datos puede cambiarse con `LOTERIA_DATA_DIR` y la de la configuración (`database-location.json` y `sorteos.json`) con `LOTERIA_CONFIG_DIR`. Si no se especifican, la instalación local utiliza:
 
 ```text
 %LOCALAPPDATA%\LoteriaMercatDeColon\data
@@ -334,7 +348,7 @@ El archivo debe comenzar por:
 Código Fecha Hora
 ```
 
-El importador acepta fechas y horas con una o dos cifras, es idempotente y crea un origen provisional `VENT-AAAA-MM-DD-HH-MM-SS` cuando el boleto no estaba registrado.
+El importador acepta fechas y horas con una o dos cifras y es idempotente. Si el boleto no estaba registrado lo crea sin origen (aún no recibido), a la espera de su albarán de entrada. En todos los casos actualiza los dígitos de control y el código de barras con el código leído.
 
 ### Validación
 

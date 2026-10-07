@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { CON_VENTA, liberarVentasDeOrigen, revertirCesionesDeOrigen } from '@/lib/boleto-estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,14 +55,14 @@ export async function DELETE(request: Request, context: Context) {
       const origin = await tx.origen.findUnique({ where: { idOrigen: id }, select: { idOrigen: true } })
       if (!origin) throw new Error('La carga no existe')
 
-      const salesCount = await tx.venta.count({ where: { boleto: { is: { idOrigen: id } } } })
+      const salesCount = await tx.boleto.count({ where: { idOrigen: id, ...CON_VENTA } })
       if (salesCount > 0 && !deleteSales) {
         const error = new Error('La carga tiene ventas asociadas') as Error & { salesCount?: number }
         error.salesCount = salesCount
         throw error
       }
-      if (deleteSales) await tx.venta.deleteMany({ where: { boleto: { is: { idOrigen: id } } } })
-      await tx.cedido.deleteMany({ where: { idOrigen: id } })
+      if (deleteSales) await liberarVentasDeOrigen(tx, id)
+      await revertirCesionesDeOrigen(tx, id)
 
       await tx.origen.update({ where: { idOrigen: id }, data: { deletedAt: new Date() } })
     })

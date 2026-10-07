@@ -5,7 +5,10 @@ import 'pdfjs-dist/legacy/build/pdf.worker.mjs'
 import { prisma } from '@/lib/prisma'
 import { parseDeliveryNoteItems, type PdfTextItem } from '@/lib/delivery-note-parser'
 import { isTemporaryOriginId } from '@/lib/origin-id'
+import { buildSelaeBarcodeForSorteo, SELAE_CONTROL_DESCONOCIDO } from '@/lib/selae-barcode'
 import { ensureSorteo } from '@/lib/sorteos-config'
+import { aplicarCesiones, ConflictosError, CON_VENTA, type ConflictoImportacion, type DecisionesImportacion, type FilaCesion } from '@/lib/boleto-estado'
+import type { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,18 +20,15 @@ function buildFractions(fractions?: string[]) {
 
 const duplicateCheckBatchSize = 500
 
-function buildCessionRows(parsed: ReturnType<typeof parseDeliveryNoteItems>, sorteoId: string, originId: string) {
+function buildCessionRows(parsed: ReturnType<typeof parseDeliveryNoteItems>, sorteoId: string): FilaCesion[] {
   return parsed.entries.flatMap((entry) => {
     const fractions = buildFractions(entry.fractions)
     return Array.from({ length: entry.seriesTo - entry.seriesFrom + 1 }, (_, index) => entry.seriesFrom + index)
       .flatMap((serie) => fractions.map((fraccion) => {
         const paddedSerie = String(serie).padStart(3, '0')
-        const idBoleto = `${sorteoId}-${entry.number}-${paddedSerie}-${fraccion}`
         return {
-          idCedido: `${originId}-${idBoleto}`,
-          idBoleto,
+          idBoleto: `${sorteoId}-${entry.number}-${paddedSerie}-${fraccion}`,
           idSorteo: sorteoId,
-          idOrigen: originId,
           numeroJugado: entry.number,
           serie: paddedSerie,
           fraccion,
@@ -37,8 +37,30 @@ function buildCessionRows(parsed: ReturnType<typeof parseDeliveryNoteItems>, sor
   })
 }
 
+// Boletos de un origen que ya tienen una venta o una cesión y, por tanto, no se pueden depurar.
+function countBusyTickets(tx: Prisma.TransactionClient, idOrigen: string) {
+  return tx.boleto.count({ where: { idOrigen, OR: [CON_VENTA, { estado: 'cedido' }] } })
+}
+
+// Respuestas del usuario a las preguntas de una importación anterior (id del boleto -> opción elegida).
+function parseDecisiones(value: FormDataEntryValue | null): DecisionesImportacion {
+  if (typeof value !== 'string') return {}
+  try {
+    const data = JSON.parse(value) as unknown
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+    return Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  } catch {
+    return {}
+  }
+}
+
+function conflictResponse(error: ConflictosError) {
+  return Response.json({ error: error.message, conflictos: error.conflictos }, { status: 409 })
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData()
+  const decisiones = parseDecisiones(formData.get('decisiones'))
   const file = formData.get('file')
   if (!(file instanceof File) || file.type !== 'application/pdf') {
     return Response.json({ error: 'Selecciona un archivo PDF válido' }, { status: 400 })
@@ -83,37 +105,34 @@ export async function POST(request: Request) {
   })
   if (existing) {
     if (existing.pdfChecksum === checksum) {
-      const updated = await prisma.$transaction(async (tx) => {
-        const origin = await tx.origen.update({
-          where: { idOrigen: existing.idOrigen },
-          data: {
-            tipoOrigen: parsed.originType,
-            fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
-            totalNumeros: parsed.totalNumbers,
-            totalSeries: parsed.totalSeries,
-            totalBilletes: parsed.totalBilletes,
-          },
-        })
-        if (parsed.originType === 'Cesión de Consignación') {
-          const sorteoId = `${parsed.tipoJuego}${parsed.year}${String(parsed.drawNumber).padStart(3, '0')}`
-          const cessionRows = buildCessionRows(parsed, sorteoId, existing.idOrigen)
-          const requestedIds = cessionRows.map((row) => row.idBoleto)
-          const boletos = []
-          for (let offset = 0; offset < requestedIds.length; offset += duplicateCheckBatchSize) {
-            const batch = requestedIds.slice(offset, offset + duplicateCheckBatchSize)
-            boletos.push(...await tx.boleto.findMany({ where: { idBoleto: { in: batch } }, select: { idBoleto: true } }))
+      try {
+        const updated = await prisma.$transaction(async (tx) => {
+          const origin = await tx.origen.update({
+            where: { idOrigen: existing.idOrigen },
+            data: {
+              tipoOrigen: parsed.originType,
+              fechaEmision: parsed.emissionDate ? new Date(parsed.emissionDate) : null,
+              totalNumeros: parsed.totalNumbers,
+              totalSeries: parsed.totalSeries,
+              totalBilletes: parsed.totalBilletes,
+            },
+          })
+          if (parsed.originType === 'Cesión de Consignación') {
+            const sorteoId = `${parsed.tipoJuego}${parsed.year}${String(parsed.drawNumber).padStart(3, '0')}`
+            // Los boletos que este albarán ya cedió se respetan; solo se preguntan los nuevos conflictos.
+            await aplicarCesiones(tx, buildCessionRows(parsed, sorteoId), existing.idOrigen, decisiones)
           }
-          const receivedIds = new Set(boletos.map((boleto) => boleto.idBoleto))
-          await tx.cedido.deleteMany({ where: { idOrigen: existing.idOrigen } })
-          await tx.cedido.createMany({ data: cessionRows.map((row) => ({ ...row, idBoleto: receivedIds.has(row.idBoleto) ? row.idBoleto : null })) })
-        }
-        return origin
-      })
-      return Response.json({
-        idOrigen: updated.idOrigen,
-        tipoOrigen: updated.tipoOrigen,
-        updated: true,
-      })
+          return origin
+        })
+        return Response.json({
+          idOrigen: updated.idOrigen,
+          tipoOrigen: updated.tipoOrigen,
+          updated: true,
+        })
+      } catch (error) {
+        if (error instanceof ConflictosError) return conflictResponse(error)
+        return Response.json({ error: error instanceof Error ? error.message : 'No se pudo actualizar el albarán' }, { status: 409 })
+      }
     }
     return Response.json({ error: `El albarán ${parsed.sourceId} ya está cargado` }, { status: 409 })
   }
@@ -137,8 +156,7 @@ export async function POST(request: Request) {
         select: { idOrigen: true },
       })
       for (const previousOrigin of previousDeletedOrigins) {
-        const salesCount = await tx.venta.count({ where: { boleto: { is: { idOrigen: previousOrigin.idOrigen } } } })
-        if (salesCount > 0) throw new Error('El albarán eliminado tiene ventas asociadas y no se puede volver a importar')
+        if (await countBusyTickets(tx, previousOrigin.idOrigen) > 0) throw new Error('El albarán eliminado tiene ventas o cesiones asociadas y no se puede volver a importar')
         await tx.boleto.deleteMany({ where: { idOrigen: previousOrigin.idOrigen } })
         await tx.origen.delete({ where: { idOrigen: previousOrigin.idOrigen } })
       }
@@ -150,16 +168,18 @@ export async function POST(request: Request) {
       const data = parsed.entries.flatMap((entry) => {
         const tickets = []
         for (let serie = entry.seriesFrom; serie <= entry.seriesTo; serie += 1) {
+          const paddedSerie = String(serie).padStart(3, '0')
           for (const fraccion of buildFractions(entry.fractions)) {
             tickets.push({
-              idBoleto: `${sorteo.idSorteo}-${entry.number}-${String(serie).padStart(3, '0')}-${fraccion}`,
+              idBoleto: `${sorteo.idSorteo}-${entry.number}-${paddedSerie}-${fraccion}`,
               idSorteo: sorteo.idSorteo,
               idOrigen: parsed.sourceId,
               numeroJugado: entry.number,
-              serie: String(serie).padStart(3, '0'),
+              serie: paddedSerie,
               fraccion,
-              digitosControl: '0000',
-              codigoBarrasRaw: `PDF:${parsed.sourceId}`,
+              digitosControl: SELAE_CONTROL_DESCONOCIDO,
+              // El albarán no trae el código de barras: se construye con los dígitos de control a 0000 hasta que se lea.
+              codigoBarrasRaw: buildSelaeBarcodeForSorteo(sorteo.idSorteo, { fraccion, serie: paddedSerie, numeroJugado: entry.number }),
             })
           }
         }
@@ -176,31 +196,56 @@ export async function POST(request: Request) {
         duplicates.push(...batchDuplicates)
       }
       const staleOriginIds = Array.from(new Set(
-        duplicates.filter((ticket) => ticket.origen.deletedAt).map((ticket) => ticket.idOrigen),
+        duplicates.flatMap((ticket) => ticket.idOrigen !== null && ticket.origen?.deletedAt ? [ticket.idOrigen] : []),
       ))
       const purgedOriginIds: string[] = []
       for (const staleOriginId of staleOriginIds) {
-        const salesCount = await tx.venta.count({ where: { boleto: { is: { idOrigen: staleOriginId } } } })
-        if (salesCount === 0) {
+        if (await countBusyTickets(tx, staleOriginId) === 0) {
           await tx.boleto.deleteMany({ where: { idOrigen: staleOriginId } })
           await tx.origen.delete({ where: { idOrigen: staleOriginId } })
           purgedOriginIds.push(staleOriginId)
         }
       }
 
-      const activeDuplicates = duplicates.filter((ticket) => !purgedOriginIds.includes(ticket.idOrigen))
-      const provisionalDuplicates = activeDuplicates.filter((ticket) => isTemporaryOriginId(ticket.idOrigen))
-      const provisionalDuplicateIds = new Set(provisionalDuplicates.map((ticket) => ticket.idBoleto))
       const isConsignmentTransfer = parsed.originType === 'Cesión de Consignación'
-      const blockingDuplicates = activeDuplicates.filter((ticket) => !isTemporaryOriginId(ticket.idOrigen))
-      if (blockingDuplicates.length > 0 && !isConsignmentTransfer) {
-        const first = blockingDuplicates[0]
-        throw new Error(`El boleto ya está cargado: ${first.numeroJugado} / serie ${first.serie} / fracción ${first.fraccion}`)
+      const activeDuplicates = duplicates.filter((ticket) => ticket.idOrigen === null || !purgedOriginIds.includes(ticket.idOrigen))
+      // Boletos que ya existen pero sin su albarán de entrada: sin origen (vendidos o cedidos antes de cargarlo)
+      // o con un origen provisional (alta manual o por escáner). El albarán los adopta conservando su estado.
+      const provisionalDuplicates = isConsignmentTransfer
+        ? []
+        : activeDuplicates.filter((ticket) => ticket.idOrigen === null || isTemporaryOriginId(ticket.idOrigen))
+      const provisionalDuplicateIds = new Set(provisionalDuplicates.map((ticket) => ticket.idBoleto))
+      // Un albarán de recepción con boletos que ya tienen otro origen real: se pregunta cuál es el correcto.
+      // En un albarán de cesión estos boletos son justo los que se ceden, así que no hay conflicto.
+      const blockingDuplicates = isConsignmentTransfer
+        ? []
+        : activeDuplicates.filter((ticket) => ticket.idOrigen !== null && !isTemporaryOriginId(ticket.idOrigen))
+      const originConflicts: ConflictoImportacion[] = []
+      const reassignedIds: string[] = []
+      for (const ticket of blockingDuplicates) {
+        const decision = decisiones[ticket.idBoleto]
+        if (decision === parsed.sourceId) reassignedIds.push(ticket.idBoleto)
+        else if (decision !== ticket.idOrigen) {
+          originConflicts.push({
+            tipo: 'origen',
+            idBoleto: ticket.idBoleto,
+            numeroJugado: ticket.numeroJugado,
+            serie: ticket.serie,
+            fraccion: ticket.fraccion,
+            detalle: `Ya está cargado con el origen ${ticket.idOrigen} y este albarán (${parsed.sourceId}) también lo incluye.`,
+            opciones: [
+              { valor: ticket.idOrigen ?? '', etiqueta: `Mantener el origen actual (${ticket.idOrigen})` },
+              { valor: parsed.sourceId, etiqueta: `Usar este albarán (${parsed.sourceId})` },
+            ],
+          })
+        }
       }
+      if (originConflicts.length > 0) throw new ConflictosError(originConflicts)
+      const blockingDuplicateIds = new Set(blockingDuplicates.map((ticket) => ticket.idBoleto))
 
       const ticketsToCreate = isConsignmentTransfer
         ? []
-        : data.filter((ticket) => !provisionalDuplicateIds.has(ticket.idBoleto))
+        : data.filter((ticket) => !provisionalDuplicateIds.has(ticket.idBoleto) && !blockingDuplicateIds.has(ticket.idBoleto))
 
       await tx.origen.create({
         data: {
@@ -217,7 +262,7 @@ export async function POST(request: Request) {
         },
       })
       if (provisionalDuplicates.length > 0) {
-        const provisionalOriginIds = Array.from(new Set(provisionalDuplicates.map((ticket) => ticket.idOrigen)))
+        const provisionalOriginIds = Array.from(new Set(provisionalDuplicates.flatMap((ticket) => ticket.idOrigen !== null ? [ticket.idOrigen] : [])))
         await tx.boleto.updateMany({
           where: { idBoleto: { in: Array.from(provisionalDuplicateIds) } },
           data: { idOrigen: parsed.sourceId },
@@ -227,14 +272,11 @@ export async function POST(request: Request) {
           if (remaining === 0) await tx.origen.delete({ where: { idOrigen: provisionalOriginId } })
         }
       }
-      await tx.boleto.createMany({ data: ticketsToCreate })
-      if (isConsignmentTransfer) {
-        const receivedIds = new Set(activeDuplicates.map((ticket) => ticket.idBoleto))
-        const cessionRows = buildCessionRows(parsed, sorteo.idSorteo, parsed.sourceId)
-        await tx.cedido.createMany({
-          data: cessionRows.map((row) => ({ ...row, idBoleto: receivedIds.has(row.idBoleto) ? row.idBoleto : null })),
-        })
+      if (reassignedIds.length > 0) {
+        await tx.boleto.updateMany({ where: { idBoleto: { in: reassignedIds } }, data: { idOrigen: parsed.sourceId } })
       }
+      await tx.boleto.createMany({ data: ticketsToCreate })
+      if (isConsignmentTransfer) await aplicarCesiones(tx, buildCessionRows(parsed, sorteo.idSorteo), parsed.sourceId, decisiones)
       return {
         idOrigen: parsed.sourceId,
         idReceptorAdmin: parsed.receiverAdminId,
@@ -249,6 +291,7 @@ export async function POST(request: Request) {
     return Response.json(result, { status: 201 })
   } catch (error) {
     await unlink(absolutePath).catch(() => undefined)
+    if (error instanceof ConflictosError) return conflictResponse(error)
     return Response.json({ error: error instanceof Error ? error.message : 'No se pudo guardar el albarán' }, { status: 409 })
   }
 }

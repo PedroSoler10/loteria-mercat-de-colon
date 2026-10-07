@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma'
-import { parseSelaeBarcode } from '@/lib/selae-barcode'
+import { buildSelaeBarcode, parseSelaeBarcode } from '@/lib/selae-barcode'
 import { temporaryOriginId } from '@/lib/origin-id'
 import { ensureSorteo } from '@/lib/sorteos-config'
+import { CON_VENTA } from '@/lib/boleto-estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,7 +73,8 @@ export async function POST(request: Request) {
         : [pad(fraccionValue!, 2)]
       const data = series.flatMap((serie) => fracciones.map((fraccion) => {
         const idBoleto = `${sorteo.idSorteo}-${numeroJugado}-${serie}-${fraccion}`
-        const codigoBarrasRaw = rawScan || `${tipoJuego}${String(numeroSorteo).padStart(3, '0')}${String(anoCompleto).slice(-1)}${fraccion}${serie}0${numeroJugado}${digitosControl}`
+        // Con lector se guarda el código leído (normalizado); sin él se construye con los dígitos indicados.
+        const codigoBarrasRaw = scanned?.codigo ?? buildSelaeBarcode({ tipoJuego, numeroSorteo, anoCompleto, fraccion, serie, numeroJugado, digitosControl })
         return {
           idBoleto,
           idSorteo: sorteo.idSorteo,
@@ -101,19 +103,22 @@ export async function POST(request: Request) {
         duplicates.push(...batchDuplicates)
       }
       const staleOriginIds = Array.from(new Set(
-        duplicates.filter((boleto) => boleto.origen.deletedAt).map((boleto) => boleto.idOrigen),
+        duplicates.flatMap((boleto) => boleto.idOrigen !== null && boleto.origen?.deletedAt ? [boleto.idOrigen] : []),
       ))
       const purgedOriginIds: string[] = []
       for (const staleOriginId of staleOriginIds) {
-        const salesCount = await tx.venta.count({ where: { boleto: { is: { idOrigen: staleOriginId } } } })
-        if (salesCount === 0) {
+        const busyCount = await tx.boleto.count({ where: { idOrigen: staleOriginId, OR: [CON_VENTA, { estado: 'cedido' }] } })
+        if (busyCount === 0) {
           await tx.boleto.deleteMany({ where: { idOrigen: staleOriginId } })
           await tx.origen.delete({ where: { idOrigen: staleOriginId } })
           purgedOriginIds.push(staleOriginId)
         }
       }
 
-      const remainingDuplicates = duplicates.filter((boleto) => !purgedOriginIds.includes(boleto.idOrigen))
+      const activeDuplicates = duplicates.filter((boleto) => boleto.idOrigen === null || !purgedOriginIds.includes(boleto.idOrigen))
+      // Un boleto vendido o cedido antes de cargar su albarán (sin origen) se da de alta aquí conservando su estado.
+      const unreceivedDuplicates = activeDuplicates.filter((boleto) => boleto.idOrigen === null)
+      const remainingDuplicates = activeDuplicates.filter((boleto) => boleto.idOrigen !== null)
       if (remainingDuplicates.length > 0) {
         const listed = remainingDuplicates
           .slice(0, 3)
@@ -143,10 +148,17 @@ export async function POST(request: Request) {
           pdfChecksum: null,
         },
       })
-      const tickets = data.map((boleto) => ({ ...boleto, idOrigen: origen.idOrigen }))
+      const unreceivedIds = new Set(unreceivedDuplicates.map((boleto) => boleto.idBoleto))
+      if (unreceivedIds.size > 0) {
+        await tx.boleto.updateMany({
+          where: { idBoleto: { in: Array.from(unreceivedIds) } },
+          data: { idOrigen: origen.idOrigen, ...(scanned ? { digitosControl, codigoBarrasRaw: scanned.codigo } : {}) },
+        })
+      }
+      const tickets = data.filter((boleto) => !unreceivedIds.has(boleto.idBoleto)).map((boleto) => ({ ...boleto, idOrigen: origen.idOrigen }))
 
       await tx.boleto.createMany({ data: tickets })
-      return { originId: origen.idOrigen, count: tickets.length }
+      return { originId: origen.idOrigen, count: tickets.length + unreceivedIds.size }
     })
 
     return Response.json(result, { status: 201 })

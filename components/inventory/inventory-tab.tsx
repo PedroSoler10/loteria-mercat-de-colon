@@ -3,24 +3,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ticketId, type Ticket } from '@/lib/record-data'
+import type { Ticket } from '@/lib/record-data'
 import { parseSelaeBarcode } from '@/lib/selae-barcode'
 import { InventorySearch, type SearchMode } from './inventory-search'
 import { InventoryStockTable } from './inventory-stock-table'
 
 type Props = {
   tickets: Ticket[]
-  onTicketsChange: (next: Ticket[]) => void
-  onSale: (ids: string[]) => void
+  /** Registra la venta en el servidor y devuelve los identificadores de las ventas creadas. */
+  onSale: (ids: string[]) => Promise<string[]>
+  /** Anula en el servidor las ventas indicadas. */
+  onUndoSale: (saleIds: string[]) => Promise<void>
 }
 
-type LastSale = { ids: string[]; at: number }
+type LastSale = { ids: string[]; saleIds: string[]; at: number }
 
-export function InventoryTab({ tickets, onTicketsChange, onSale }: Props) {
+export function InventoryTab({ tickets, onSale, onUndoSale }: Props) {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<SearchMode>('termina')
   const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [lastSale, setLastSale] = useState<LastSale | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
   const filtered = useMemo(() => {
     let list = tickets
@@ -53,18 +57,32 @@ export function InventoryTab({ tickets, onTicketsChange, onSale }: Props) {
     return () => clearTimeout(t)
   }, [lastSale])
 
-  function sell(ids: string[]) {
-    onSale(ids)
-    const set = new Set(ids)
-    onTicketsChange(tickets.map((t) => (set.has(ticketId(t)) ? { ...t, vendido: true } : t)))
-    setLastSale({ ids, at: Date.now() })
+  async function sell(ids: string[]) {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      const saleIds = await onSale(ids)
+      setLastSale({ ids, saleIds, at: Date.now() })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo registrar la venta')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  function undo() {
-    if (!lastSale) return
-    const set = new Set(lastSale.ids)
-    onTicketsChange(tickets.map((t) => (set.has(ticketId(t)) ? { ...t, vendido: false } : t)))
-    setLastSale(null)
+  async function undo() {
+    if (!lastSale || busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await onUndoSale(lastSale.saleIds)
+      setLastSale(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo deshacer la venta')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const saleSummary = useMemo(() => {
@@ -103,13 +121,14 @@ export function InventoryTab({ tickets, onTicketsChange, onSale }: Props) {
                 <span className="font-mono text-sm tabular-nums text-muted-foreground">{saleSummary}</span>
               </div>
             </div>
-            <Button variant="outline" className="h-10 gap-2" onClick={undo}>
+            <Button variant="outline" className="h-10 gap-2" disabled={busy} onClick={() => void undo()}>
               <Undo2 className="size-4" aria-hidden="true" />
               Deshacer
             </Button>
           </div>
         )}
       </div>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       <InventoryStockTable tickets={filtered} autoExpand={autoExpand} onSell={sell} />
     </div>

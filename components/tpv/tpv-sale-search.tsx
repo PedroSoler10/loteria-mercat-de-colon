@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ScanLine, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,41 +8,41 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 export type SaleMode = 'fraccion' | 'serie'
+export type ScanResult = { sold: number; message?: string }
 
 type Props = {
   mode: SaleMode
   onModeChange: (mode: SaleMode) => void
-  onScan: (code: string, mode: SaleMode) => number
+  onScan: (code: string, mode: SaleMode) => Promise<ScanResult>
 }
 
 export function TpvSaleSearch({ mode, onModeChange, onScan }: Props) {
   const [code, setCode] = useState('')
   const [message, setMessage] = useState('')
+  const busy = useRef(false)
+
+  // Una sola venta a la vez: el temporizador del escáner y la tecla Enter no deben duplicarla.
+  async function submitScan() {
+    if (!code || busy.current) return
+    busy.current = true
+    try {
+      const result = await onScan(code, mode)
+      if (result.sold > 0) {
+        setCode('')
+        setMessage(result.message ?? `${result.sold} ${result.sold === 1 ? 'fracción vendida' : 'fracciones vendidas'}`)
+      } else {
+        setMessage(result.message ?? 'Código no disponible')
+      }
+    } finally {
+      busy.current = false
+    }
+  }
 
   useEffect(() => {
     if (!code) return
-    const timer = window.setTimeout(() => {
-      const soldCount = onScan(code, mode)
-      if (soldCount > 0) {
-        setCode('')
-        setMessage(`${soldCount} ${soldCount === 1 ? 'fracción vendida' : 'fracciones vendidas'}`)
-      } else {
-        setMessage('Código no disponible')
-      }
-    }, 350)
+    const timer = window.setTimeout(() => void submitScan(), 350)
     return () => window.clearTimeout(timer)
   }, [code, mode, onScan])
-
-  function submitScan() {
-    if (!code) return
-    const soldCount = onScan(code, mode)
-    if (soldCount > 0) {
-      setCode('')
-      setMessage(`${soldCount} ${soldCount === 1 ? 'fracción vendida' : 'fracciones vendidas'}`)
-    } else {
-      setMessage('Código no disponible')
-    }
-  }
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm">
@@ -66,7 +66,7 @@ export function TpvSaleSearch({ mode, onModeChange, onScan }: Props) {
             setMessage('')
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') submitScan()
+            if (event.key === 'Enter') void submitScan()
           }}
           className="h-14 pl-13 pr-12 font-mono text-2xl tabular-nums tracking-wider placeholder:font-sans placeholder:text-base placeholder:tracking-normal"
         />

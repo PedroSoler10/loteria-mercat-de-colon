@@ -31,7 +31,8 @@ function createTickets() {
             serie: series,
             fraccion: fraction,
             digitosControl: '0000',
-            codigoBarrasRaw: `${drawId}${fraction}${series}${number}0000`,
+            // Código de 20 dígitos sin separador: juego 5, sorteo 102, año 6, fracción, serie, relleno 0, número y control.
+            codigoBarrasRaw: `51026${fraction}${series}0${number}0000`,
             fechaHoraRegistro: registeredAt,
           })
         }
@@ -42,7 +43,6 @@ function createTickets() {
 }
 
 async function main() {
-  await prisma.venta.deleteMany()
   await prisma.boleto.deleteMany()
   await prisma.origen.deleteMany()
   await prisma.sorteo.deleteMany()

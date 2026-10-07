@@ -19,7 +19,6 @@ model Sorteo {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   boletos Boleto[]
-  cedidos Cedido[]
   origenes Origen[]
 
   @@unique([tipoJuego, anoCompleto, numeroSorteo])
@@ -41,66 +40,44 @@ model Origen {
   deletedAt       DateTime? @map("deleted_at")
 
   sorteo Sorteo? @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
-  boletos Boleto[]
-  cedidos Cedido[]
+  boletos Boleto[] @relation("AltaBoleto")
+  boletosCedidos Boleto[] @relation("CesionBoleto")
 
   @@index([idSorteo])
   @@map("origenes")
 }
 
+/// Un décimo individual. Reúne su inventario, su venta y su cesión:
+/// - `estado`: `disponible`, `vendido` o `cedido` (excluyentes entre sí).
+/// - `idOrigen` nulo: el boleto aún no se ha recibido (su albarán no está cargado),
+///   por ejemplo si se vende o se cede antes de cargar el albarán de entrada.
+/// - Una venta anulada deja el boleto `disponible` conservando `fechaHoraVenta`,
+///   `fechaHoraAnulacion` y `motivoAnulacion` hasta que se vuelva a vender o ceder.
 model Boleto {
-  idBoleto          String   @id @map("id_boleto")
-  idSorteo          String   @map("id_sorteo")
-  idOrigen          String   @map("id_origen")
-  numeroJugado      String   @map("numero_jugado")
-  serie             String
-  fraccion          String
-  digitosControl    String   @map("digitos_control")
-  codigoBarrasRaw   String   @map("codigo_barras_raw")
-  fechaHoraRegistro DateTime @default(now()) @map("fecha_hora_registro")
+  idBoleto           String    @id @map("id_boleto")
+  idSorteo           String    @map("id_sorteo")
+  idOrigen           String?   @map("id_origen")
+  numeroJugado       String    @map("numero_jugado")
+  serie              String
+  fraccion           String
+  digitosControl     String    @map("digitos_control")
+  codigoBarrasRaw    String    @map("codigo_barras_raw")
+  fechaHoraRegistro  DateTime  @default(now()) @map("fecha_hora_registro")
+  estado             String    @default("disponible")
+  fechaHoraVenta     DateTime? @map("fecha_hora_venta")
+  fechaHoraAnulacion DateTime? @map("fecha_hora_anulacion")
+  motivoAnulacion    String?   @map("motivo_anulacion")
+  fechaHoraCesion    DateTime? @map("fecha_hora_cesion")
+  idOrigenCesion     String?   @map("id_origen_cesion")
 
   sorteo Sorteo @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
-  origen Origen @relation(fields: [idOrigen], references: [idOrigen], onDelete: Restrict)
-  venta  Venta?
-  cedidos Cedido[]
+  origen Origen? @relation("AltaBoleto", fields: [idOrigen], references: [idOrigen], onDelete: Restrict)
+  origenCesion Origen? @relation("CesionBoleto", fields: [idOrigenCesion], references: [idOrigen], onDelete: Restrict)
 
   @@unique([idSorteo, numeroJugado, serie, fraccion])
-  @@index([idSorteo, numeroJugado])
   @@index([idOrigen])
+  @@index([idOrigenCesion])
+  @@index([estado])
+  @@index([fechaHoraVenta])
   @@map("boletos")
-}
-
-model Venta {
-  idBoleto              String    @id @map("id_boleto")
-  fechaHoraVenta        DateTime  @default(now()) @map("fecha_hora_venta")
-  estado                String    @default("activa")
-  fechaHoraAnulacion    DateTime? @map("fecha_hora_anulacion")
-  motivoAnulacion       String?   @map("motivo_anulacion")
-
-  boleto Boleto @relation(fields: [idBoleto], references: [idBoleto], onDelete: Restrict)
-
-  @@index([estado, fechaHoraVenta])
-  @@map("ventas")
-}
-
-model Cedido {
-  idCedido          String   @id @map("id_cedido")
-  idBoleto          String?  @map("id_boleto")
-  idSorteo          String   @map("id_sorteo")
-  idOrigen          String   @map("id_origen")
-  numeroJugado      String   @map("numero_jugado")
-  serie             String
-  fraccion          String
-  fechaHoraCesion   DateTime @default(now()) @map("fecha_hora_cesion")
-  precioCentimos    Int      @default(0) @map("precio_centimos")
-
-  boleto Boleto? @relation(fields: [idBoleto], references: [idBoleto], onDelete: Restrict)
-  sorteo Sorteo @relation(fields: [idSorteo], references: [idSorteo], onDelete: Restrict)
-  origen Origen @relation(fields: [idOrigen], references: [idOrigen], onDelete: Restrict)
-
-  @@index([fechaHoraCesion])
-  @@index([idSorteo, numeroJugado, serie, fraccion])
-  @@index([idOrigen])
-  @@unique([idOrigen, idSorteo, numeroJugado, serie, fraccion])
-  @@map("cedidos")
 }

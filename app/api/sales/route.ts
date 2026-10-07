@@ -1,10 +1,15 @@
 import { prisma } from '@/lib/prisma'
+import { buildSelaeBarcodeForSorteo, parseSelaeBarcode, SELAE_CONTROL_DESCONOCIDO, type SelaeBarcode } from '@/lib/selae-barcode'
+import { findSorteoForScan } from '@/lib/sorteos-config'
+import { CON_VENTA, crearBoletoSinRecibir, venderBoleto } from '@/lib/boleto-estado'
+import { toSale } from '@/lib/sale-dto'
 
 export const dynamic = 'force-dynamic'
-const DEFAULT_TICKET_PRICE_CENTIMOS = 2000
 
 type SaleRequest = {
   ticketIds?: string[]
+  /** Código de barras escaneado. Actualiza los dígitos de control de la fracción que se ha leído. */
+  scan?: string
 }
 
 function parseTicketId(value: string) {
@@ -13,34 +18,29 @@ function parseTicketId(value: string) {
   return { numeroJugado, serie, fraccion }
 }
 
-function toSale(venta: { idBoleto: string; fechaHoraVenta: Date; estado: string; boleto: { numeroJugado: string; serie: string; fraccion: string; origen: { tipoOrigen: string }; sorteo: { tipoJuego: number; nombreSorteo: string; anoCompleto: number; precioCentimos: number } } }) {
-  return {
-    id: venta.idBoleto,
-    fecha: venta.fechaHoraVenta.toISOString(),
-    tipoJuego: String(venta.boleto.sorteo.tipoJuego),
-    sorteo: venta.boleto.sorteo.nombreSorteo,
-    anio: venta.boleto.sorteo.anoCompleto,
-    numero: venta.boleto.numeroJugado,
-    serie: venta.boleto.serie,
-    fraccion: venta.boleto.fraccion,
-    precio: (venta.boleto.sorteo.precioCentimos || DEFAULT_TICKET_PRICE_CENTIMOS) / 100,
-    estado: venta.estado,
-    importada: venta.boleto.origen.tipoOrigen === 'Venta importada',
+function parseScan(value: string | undefined) {
+  if (!value?.trim()) return null
+  try {
+    return parseSelaeBarcode(value)
+  } catch {
+    return null
   }
 }
 
 export async function GET() {
-  const ventas = await prisma.venta.findMany({
-    include: { boleto: { include: { sorteo: true, origen: true } } },
+  const boletos = await prisma.boleto.findMany({
+    where: CON_VENTA,
+    include: { sorteo: true },
     orderBy: { fechaHoraVenta: 'desc' },
   })
-  return Response.json(ventas.map(toSale))
+  return Response.json(boletos.map(toSale))
 }
 
 export async function POST(request: Request) {
   const body = (await request.json()) as SaleRequest
   const ticketIds = body.ticketIds ?? []
   if (ticketIds.length === 0) return Response.json({ error: 'No se han recibido boletos' }, { status: 400 })
+  const scan = parseScan(body.scan)
 
   try {
     const sales = await prisma.$transaction(async (tx) => {
@@ -49,25 +49,29 @@ export async function POST(request: Request) {
         const parsed = parseTicketId(ticketId)
         if (!parsed) throw new Error(`Identificador de boleto no válido: ${ticketId}`)
 
-        const boleto = await tx.boleto.findFirst({
-          where: parsed,
-          include: { sorteo: true },
-        })
+        // El código escaneado identifica la serie leída y, dentro de ella, la fracción exacta que se ha leído:
+        // solo esa fracción trae sus dígitos de control.
+        const deLaSerie: SelaeBarcode | null = scan && scan.numeroJugado === parsed.numeroJugado && scan.serie === parsed.serie ? scan : null
+        const leido = deLaSerie && deLaSerie.fraccion === parsed.fraccion ? deLaSerie : null
+        const sorteoEscaneado = deLaSerie ? await findSorteoForScan(tx, deLaSerie) : null
+        if (deLaSerie && !sorteoEscaneado) throw new Error('El sorteo del código escaneado no existe. Créalo antes en el apartado Sorteos de la pestaña Registro')
+
+        let boleto = await tx.boleto.findFirst({ where: sorteoEscaneado ? { ...parsed, idSorteo: sorteoEscaneado.idSorteo } : parsed })
+        // Un décimo cuyo albarán aún no se ha cargado se puede vender igualmente; se recibirá después.
+        // Las demás fracciones de la serie leída (venta de serie completa) no traen dígitos de control propios.
+        if (!boleto && sorteoEscaneado && deLaSerie) {
+          boleto = await crearBoletoSinRecibir(tx, {
+            idSorteo: sorteoEscaneado.idSorteo,
+            ...parsed,
+            digitosControl: leido ? leido.digitosControl : SELAE_CONTROL_DESCONOCIDO,
+            // Las demás fracciones de la serie no traen su código: se construye con los dígitos de control a 0000.
+            codigoBarrasRaw: leido ? leido.codigo : buildSelaeBarcodeForSorteo(sorteoEscaneado.idSorteo, parsed),
+          })
+        }
         if (!boleto) throw new Error(`Boleto no encontrado: ${ticketId}`)
 
-        const existing = await tx.venta.findUnique({ where: { idBoleto: boleto.idBoleto } })
-        if (existing?.estado === 'activa') throw new Error(`El boleto ya está vendido: ${ticketId}`)
-
-        const venta = existing
-          ? await tx.venta.update({
-              where: { idBoleto: boleto.idBoleto },
-              data: { estado: 'activa', fechaHoraVenta: new Date(), fechaHoraAnulacion: null, motivoAnulacion: null },
-              include: { boleto: { include: { sorteo: true, origen: true } } },
-            })
-          : await tx.venta.create({
-              data: { idBoleto: boleto.idBoleto },
-              include: { boleto: { include: { sorteo: true, origen: true } } },
-            })
+        // Al leer el código en la venta se actualizan los dígitos de control y el código de barras (sin separador).
+        const venta = await venderBoleto(tx, boleto, new Date(), leido ? { digitosControl: leido.digitosControl, codigoBarrasRaw: leido.codigo } : undefined)
         created.push(toSale(venta))
       }
       return created

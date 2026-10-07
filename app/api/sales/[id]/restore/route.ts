@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { restaurarVenta } from '@/lib/boleto-estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,20 +8,17 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
   try {
     const restored = await prisma.$transaction(async (tx) => {
-      const sale = await tx.venta.findUnique({
+      const boleto = await tx.boleto.findUnique({
         where: { idBoleto: id },
-        include: { boleto: { include: { origen: true } } },
+        include: { origen: true },
       })
-      if (!sale) throw new Error('La venta no existe')
-      if (sale.estado !== 'anulada') throw new Error('Solo se pueden revertir ventas anuladas')
-      if (sale.boleto.origen.deletedAt) throw new Error('No se puede revertir una venta de una carga eliminada')
+      if (!boleto || boleto.fechaHoraVenta === null) throw new Error('La venta no existe')
+      if (boleto.estado !== 'disponible' || boleto.fechaHoraAnulacion === null) throw new Error('Solo se pueden revertir ventas anuladas')
+      if (boleto.origen?.deletedAt) throw new Error('No se puede revertir una venta de una carga eliminada')
 
-      return tx.venta.update({
-        where: { idBoleto: id },
-        data: { estado: 'activa', fechaHoraAnulacion: null, motivoAnulacion: null },
-      })
+      return restaurarVenta(tx, id)
     })
-    return Response.json({ id: restored.idBoleto, estado: restored.estado })
+    return Response.json({ id: restored.idBoleto, estado: 'activa' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo revertir la venta'
     return Response.json({ error: message }, { status: message === 'La venta no existe' ? 404 : 409 })
